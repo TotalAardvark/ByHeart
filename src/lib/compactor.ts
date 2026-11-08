@@ -13,6 +13,10 @@ import {
   parseNumberedSectionHeader,
   simplifyChordVoicing,
 } from './chordUtils';
+import {
+  analyzeTabBlockIntoChunks,
+  splitTabSystemIntoMeasures,
+} from './tabAnalyzer';
 
 export interface CompactorOptions {
   /** Simplify maj7/add9/sus voicings to clean triads (e.g. Cmaj7 -> C, Fmaj7 -> F) */
@@ -460,11 +464,52 @@ function compactSectionPairs(
  */
 function inferSectionsFromHeaderlessPairs(
   pairs: RawLinePair[],
-  options: CompactorOptions
+  _options: CompactorOptions
 ): RawSectionBlock[] {
+  const tabPairs = pairs.filter((p) =>
+    Boolean(p.rawBlockLines && p.rawBlockLines.some((l) => isAsciiTabLine(l)))
+  );
+  const lyricPairsCount = pairs.filter(
+    (p) => !p.isStandaloneChordLine && !p.rawBlockLines
+  ).length;
+
+  // If this is a headerless pure-tab sheet (no sung lyrics, multiple tab chunks),
+  // group tab chunks into named Riff sections and match recurring riff fingerprints!
+  if (lyricPairsCount === 0 && tabPairs.length > 1) {
+    const blocks: RawSectionBlock[] = [];
+    const riffNameByFingerprint = new Map<string, string>();
+    let nextRiffLetterCode = 65; // 'A', 'B', 'C'...
+
+    for (const pair of pairs) {
+      if (!pair.rawBlockLines) continue;
+      const tabOnlyLines = pair.rawBlockLines.filter((l) => isAsciiTabLine(l));
+      const measures = splitTabSystemIntoMeasures(tabOnlyLines);
+      const fp =
+        measures.map((m) => `${m.fingerprint}*${m.repeatCount}`).join('||') ||
+        tabOnlyLines.join('\n');
+
+      let riffName = riffNameByFingerprint.get(fp);
+      if (!riffName) {
+        const letter = String.fromCharCode(
+          Math.min(90, nextRiffLetterCode++)
+        );
+        riffName = `Riff ${letter}`;
+        riffNameByFingerprint.set(fp, riffName);
+      }
+
+      blocks.push({
+        headerName: riffName,
+        pairs: [pair],
+      });
+    }
+
+    if (blocks.length > 0) {
+      return blocks;
+    }
+  }
+
   // Drop pure standalone chord lines when grouping into 4-line lyric stanzas,
   // or attach them to the current stanza if they match its chords.
-  const lyricPairsCount = pairs.filter((p) => !p.isStandaloneChordLine).length;
   if (lyricPairsCount <= 4) {
     return [{ headerName: 'Section 1', pairs }];
   }
@@ -562,14 +607,67 @@ export function compactChordSheet(
   let activeInSectionTabLines: string[] = [];
 
   const flushActiveInSectionTabBlock = () => {
-    if (activeInSectionTabLines.length > 0) {
+    if (activeInSectionTabLines.length === 0) return;
+
+    if (shouldSimplifyInlineTabs) {
+      // If there was no explicit chord line above this tab system, infer chords from the tab notes!
+      if (!pendingChordLine) {
+        const analyzed = analyzeTabBlockIntoChunks(activeInSectionTabLines, {
+          simplifyVoicings: options.simplifyVoicings,
+        });
+        for (const chunk of analyzed) {
+          if (chunk.chords.length > 0) {
+            currentBlock.pairs.push({
+              chords: chunk.chords.map((c, idx) => ({
+                chord: c,
+                column: idx * 4,
+              })),
+              lyric: '',
+              isStandaloneChordLine: true,
+            });
+          }
+        }
+      }
+      activeInSectionTabLines = [];
+      return;
+    }
+
+    const firstLineIsChord =
+      isChordOverLyricLine(activeInSectionTabLines[0]) &&
+      !isAsciiTabLine(activeInSectionTabLines[0]);
+    const tabOnly = firstLineIsChord
+      ? activeInSectionTabLines.slice(1)
+      : activeInSectionTabLines;
+    const measures = splitTabSystemIntoMeasures(
+      tabOnly,
+      firstLineIsChord ? activeInSectionTabLines[0] : undefined
+    );
+
+    // Preserve single-bar tab blocks that already have an explicit chord header verbatim
+    if (firstLineIsChord && measures.length <= 1 && tabOnly.length <= 6) {
       currentBlock.pairs.push({
         chords: [],
         lyric: '',
         rawBlockLines: ['{', ...activeInSectionTabLines, '}'],
       });
       activeInSectionTabLines = [];
+      return;
     }
+
+    // Otherwise run full pattern analysis: slice multi-bar systems into bite-sized { ... } chunks,
+    // deduplicate consecutive identical bars (|xN|), and infer chord names above unannotated bars!
+    const analyzedChunks = analyzeTabBlockIntoChunks(activeInSectionTabLines, {
+      simplifyVoicings: options.simplifyVoicings,
+      maxBarsPerChunk: 2,
+    });
+    for (const chunk of analyzedChunks) {
+      currentBlock.pairs.push({
+        chords: [],
+        lyric: '',
+        rawBlockLines: chunk.rawBlockLines,
+      });
+    }
+    activeInSectionTabLines = [];
   };
 
   const flushPendingChordAsStandalone = () => {
@@ -719,9 +817,12 @@ export function compactChordSheet(
 
       // It's an ASCII TAB line (`e|---|` etc.)
       if (shouldSimplifyInlineTabs) {
-        // Simplify in-song tabs: strip the ASCII tab lines and keep the pending chord line as a standalone progression!
+        // Simplify in-song tabs: strip the ASCII tab lines and keep the pending chord line as a standalone progression
+        // (or collect tab lines to infer chords if no explicit chord line was above it!)
         if (pendingChordLine) {
           pendingChordAttachedToTab = true;
+        } else {
+          activeInSectionTabLines.push(line.trimEnd());
         }
         continue;
       } else {

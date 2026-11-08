@@ -48,10 +48,13 @@ function chordUrlScraperPlugin(): Plugin {
           return;
         }
 
-        const html = await upstream.text();
+        const contentType =
+          upstream.headers.get('content-type') || 'text/html; charset=utf-8';
+        const arrayBuf = await upstream.arrayBuffer();
+        const buf = Buffer.from(arrayBuf);
         res.statusCode = 200;
-        res.setHeader('Content-Type', 'text/html; charset=utf-8');
-        res.end(html);
+        res.setHeader('Content-Type', contentType);
+        res.end(buf as unknown as string);
       } catch (err) {
         res.statusCode = 502;
         res.setHeader('Content-Type', 'application/json');

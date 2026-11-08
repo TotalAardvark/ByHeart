@@ -15,6 +15,7 @@ import { SongItem } from '../types';
 import { ThemeId } from './themes';
 
 export const ACTIVE_PROFILE_KEY = 'by_heart_active_profile_v1';
+export const PROFILES_COLLECTION = 'byheart_profiles';
 
 export interface CloudProfileData {
   username: string;
@@ -139,7 +140,7 @@ export function saveActiveProfile(profile: ActiveProfile | null): void {
  * Check if a Firestore profile document exists
  */
 export async function fetchProfileDoc(docId: string): Promise<{ exists: boolean; data?: CloudProfileData }> {
-  const docRef = doc(db, 'profiles', docId);
+  const docRef = doc(db, PROFILES_COLLECTION, docId);
   const snap = await getDoc(docRef);
   if (snap.exists()) {
     return { exists: true, data: snap.data() as CloudProfileData };
@@ -183,7 +184,7 @@ export async function createUsernameProfile(
     profileData.userId = auth.currentUser.uid;
   }
 
-  await setDoc(doc(db, 'profiles', docId), profileData);
+  await setDoc(doc(db, PROFILES_COLLECTION, docId), profileData);
 
   const active: ActiveProfile = {
     id: docId,
@@ -350,7 +351,7 @@ export async function syncProfileToCloud(
   if (auth.currentUser) {
     profileData.userId = auth.currentUser.uid;
   }
-  await setDoc(doc(db, 'profiles', profileId), profileData, { merge: true });
+  await setDoc(doc(db, PROFILES_COLLECTION, profileId), profileData, { merge: true });
   return now;
 }
 
@@ -363,7 +364,7 @@ export function subscribeToCloudProfile(
   onRemoteChange: (data: CloudProfileData) => void,
   onError?: (err: Error) => void
 ): () => void {
-  const docRef = doc(db, 'profiles', profileId);
+  const docRef = doc(db, PROFILES_COLLECTION, profileId);
   return onSnapshot(
     docRef,
     (snapshot) => {

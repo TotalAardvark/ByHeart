@@ -1,64 +1,43 @@
 rules_version = '2';
 
 // ===============================================================
-// Assumed Data Model
-// ===============================================================
-//
-// Application: By Heart (Song Lyrics & Chord Progression Memorization)
-// Database: Cloud Firestore
-//
-// Collection: profiles
-// Document ID: {profileId}
-//   - Zero-friction username profile: Normalized username string (e.g. 'pablo', 'acoustic_guitar')
-//   - OAuth profile: 'oauth_' prefix followed by Firebase Auth UID (e.g. 'oauth_' + request.auth.uid)
-//
-// Fields in profiles/{profileId}:
-//   - username: string (required, length 1..100) - Display name of the user or band profile
-//   - songs: list (required, max 200 items) - List of song items with By Heart notation and settings
-//   - themeId: string (required, length 1..50) - Active theme palette identifier (e.g. 'ocean', 'citrus')
-//   - updatedAt: timestamp or number (required, positive value) - Timestamp of last local or cloud edit
-//   - authProvider: string (optional, enum: 'anonymous' | 'google' | 'apple' | 'username') - Sign-in provider
-//   - userId: string (optional, length 1..128) - Firebase Auth UID associated with the profile
-//
-// Access Control Model:
-//   - Username profiles: Zero-friction read, create, and update by anyone (no login required).
-//     Arbitrary deletion is disallowed to prevent vandalism of public song repertoires.
-//   - OAuth profiles (oauth_{uid}): Read and write restricted exclusively to the authenticated
-//     document owner (oauth_{request.auth.uid}).
-//   - Strict type checking, field validation, and size bounds enforced on both create and update.
-//   - Document IDs must not contain paths, slashes, or invalid characters.
-//   - All other database paths denied by default.
-//
+// Multi-App Firestore Security Rules
+// Project: antigravity-init-512109
 // ===============================================================
 
 service cloud.firestore {
   match /databases/{database}/documents {
 
     // ===============================================================
-    // Helper Functions
+    // App 1: Existing App (2-word sync codes)
+    // ===============================================================
+    // Each profile document is named after its 2-word code (e.g. /profiles/mellow-tiger)
+    match /profiles/{syncCode} {
+      // Allow reading and writing only if the user specifies the direct document code
+      allow get: if true;
+      allow create, update: if true;
+
+      // Prohibit listing/querying the entire collection so sync codes cannot be enumerated
+      allow list: if false;
+    }
+
+    // ===============================================================
+    // App 2: By Heart (Song Lyrics & Chord Progression Memorization)
+    // Collection: byheart_profiles/{profileId}
     // ===============================================================
 
-    // Check if the request is from an authenticated user
     function isAuthenticated() {
       return request.auth != null;
     }
 
-    // Check if user owns the given userId
-    function isOwner(userId) {
-      return isAuthenticated() && request.auth.uid == userId;
-    }
-
-    // Determine if a profileId is an OAuth profile
     function isOAuthProfile(profileId) {
       return profileId.matches('^oauth_.*');
     }
 
-    // Check if the authenticated user is the owner of this OAuth profile
     function isOAuthOwner(profileId) {
       return isAuthenticated() && profileId == 'oauth_' + request.auth.uid;
     }
 
-    // Validate that document ID is well-formed, not a path or traversal, and contains safe characters
     function isValidProfileId(profileId) {
       return profileId is string &&
              profileId.size() >= 1 &&
@@ -70,82 +49,50 @@ service cloud.firestore {
              !profileId.matches('.*[\\n\\r\\t].*');
     }
 
-    // Check if required fields exist
     function hasRequiredFields(fields) {
       return request.resource.data.keys().hasAll(fields);
     }
 
-    // Check that no extraneous fields exist in the document
     function hasOnlyAllowedFields(fields) {
       return request.resource.data.keys().hasOnly(fields);
     }
 
-    // Validate authorized userId binding: if userId is provided, it must match authenticated UID
     function isAuthorizedUserId(data) {
       return !('userId' in data) || (isAuthenticated() && data.userId == request.auth.uid);
     }
 
-    // ===============================================================
-    // Domain Validators (Applied to both create and update)
-    // ===============================================================
-
-    // Validates the structure, types, and constraints of a profile document
     function isValidProfile(data, profileId) {
       return hasRequiredFields(['username', 'songs', 'themeId', 'updatedAt']) &&
              hasOnlyAllowedFields(['username', 'songs', 'themeId', 'updatedAt', 'authProvider', 'userId']) &&
-             // username: string, length between 1 and 100
              data.username is string &&
              data.username.size() >= 1 &&
              data.username.size() <= 100 &&
-             // songs: list with size bound to prevent document bloat and DoS attacks (max 200 songs)
              data.songs is list &&
              data.songs.size() <= 200 &&
-             // themeId: string, realistic bounds
              data.themeId is string &&
              data.themeId.size() >= 1 &&
              data.themeId.size() <= 50 &&
-             // updatedAt: timestamp or positive number (e.g. Date.now() millisecond epoch)
              ((data.updatedAt is timestamp) || (data.updatedAt is number && data.updatedAt > 0)) &&
-             // optional authProvider: must match allowed enum values
              (!('authProvider' in data) ||
               (data.authProvider is string &&
                data.authProvider in ['anonymous', 'google', 'apple', 'username'])) &&
-             // optional userId: string with length bounds
              (!('userId' in data) ||
               (data.userId is string && data.userId.size() >= 1 && data.userId.size() <= 128)) &&
-             // If this is an OAuth profile and userId is present, must match authenticated user
              (!isOAuthProfile(profileId) || !('userId' in data) || (isAuthenticated() && data.userId == request.auth.uid));
     }
 
-    // ===============================================================
-    // Collection Rules
-    // ===============================================================
-
-    match /profiles/{profileId} {
-      // READ RULES:
-      // - Zero-friction username profiles can be read by anyone (public repertoire sharing/loading)
-      // - OAuth profiles (oauth_{uid}) can only be read by their authenticated owner to protect private user data
+    match /byheart_profiles/{profileId} {
+      // Username profiles are public to read; OAuth profiles are private to the owner
       allow read: if isValidProfileId(profileId) &&
                      (!isOAuthProfile(profileId) || isOAuthOwner(profileId));
 
-      // CREATE RULES:
-      // - Enforce valid document ID format (no slashes, path traversals, or reserved names)
-      // - Enforce full schema and type validation via domain validator
-      // - OAuth profiles require the creator to be the authenticated owner (profileId == 'oauth_' + request.auth.uid)
-      // - Username profiles can be created by anyone (zero-friction profile creation)
-      // - If a userId field is attached, it must match the authenticated caller's UID
+      // Create new profile with schema and identity checks
       allow create: if isValidProfileId(profileId) &&
                        isValidProfile(request.resource.data, profileId) &&
                        (!isOAuthProfile(profileId) || isOAuthOwner(profileId)) &&
                        isAuthorizedUserId(request.resource.data);
 
-      // UPDATE RULES:
-      // - Enforce valid document ID format
-      // - Enforce full schema and type validation via domain validator (prevents Update Bypass vulnerability)
-      // - OAuth profiles can only be updated by the authenticated owner
-      // - Username profiles can be updated zero-friction; if claimed with a userId, only that owner can update it
-      // - Existing userId is immutable once set and cannot be replaced or removed
-      // - If a new userId is being attached, it must match the authenticated caller's UID
+      // Updates require schema validity and owner checks
       allow update: if isValidProfileId(profileId) &&
                        isValidProfile(request.resource.data, profileId) &&
                        (!isOAuthProfile(profileId) || isOAuthOwner(profileId)) &&
@@ -153,18 +100,13 @@ service cloud.firestore {
                        (!('userId' in resource.data) || ('userId' in request.resource.data && request.resource.data.userId == resource.data.userId)) &&
                        isAuthorizedUserId(request.resource.data);
 
-      // DELETE RULES:
-      // - Disallow arbitrary deletion of username profiles (prevents vandalism / wiping public profiles)
-      // - Allow authenticated OAuth profile owners to delete their own account profile
+      // Deletions allowed only for OAuth owners of their own profile
       allow delete: if isValidProfileId(profileId) &&
                        isOAuthProfile(profileId) &&
                        isOAuthOwner(profileId);
     }
 
-    // ===============================================================
-    // Root Default Deny
-    // ===============================================================
-    // Deny read and write access to all other paths and subcollections
+    // Default deny for all other paths
     match /{document=**} {
       allow read, write: if false;
     }

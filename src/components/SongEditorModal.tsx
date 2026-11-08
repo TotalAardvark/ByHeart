@@ -1,4 +1,4 @@
-import React, { useState, useMemo, useEffect, useCallback } from 'react';
+import React, { useState, useMemo, useEffect, useCallback, useRef } from 'react';
 import {
   X,
   Wand2,
@@ -12,6 +12,8 @@ import {
   Globe,
   Loader2,
   ChevronDown,
+  Upload,
+  Music,
 } from 'lucide-react';
 import { SongItem } from '../types';
 import {
@@ -31,6 +33,11 @@ import {
   RAW_SHALLOW_UG_SAMPLE,
 } from '../lib/sampleSongs';
 import { fetchChordSheetFromUrl } from '../lib/urlScraper';
+import {
+  ParsedGpScore,
+  convertGpTrackToAsciiTab,
+  parseGuitarProBytes,
+} from '../lib/gpImporter';
 
 interface SongEditorModalProps {
   song: SongItem;
@@ -177,6 +184,11 @@ export const SongEditorModal: React.FC<SongEditorModalProps> = ({
   const [urlInput, setUrlInput] = useState('');
   const [isScrapingUrl, setIsScrapingUrl] = useState(false);
   const [urlScrapeError, setUrlScrapeError] = useState<string | null>(null);
+  const [loadedGpScore, setLoadedGpScore] = useState<ParsedGpScore | null>(
+    null
+  );
+  const [selectedGpTrackIndex, setSelectedGpTrackIndex] = useState<number>(0);
+  const gpFileInputRef = useRef<HTMLInputElement | null>(null);
 
   const combinedBody = useMemo(
     () => combinePreambleAndBody(description, sectionsBody),
@@ -359,6 +371,12 @@ export const SongEditorModal: React.FC<SongEditorModalProps> = ({
     setUrlScrapeError(null);
     try {
       const scraped = await fetchChordSheetFromUrl(urlInput);
+      if (scraped.gpScore) {
+        setLoadedGpScore(scraped.gpScore);
+        setSelectedGpTrackIndex(scraped.gpScore.defaultTrackIndex);
+      } else {
+        setLoadedGpScore(null);
+      }
       setRawSource(scraped.rawText);
       setIsUrlModalOpen(false);
       setUrlInput('');
@@ -367,11 +385,56 @@ export const SongEditorModal: React.FC<SongEditorModalProps> = ({
       setUrlScrapeError(
         err instanceof Error
           ? err.message
-          : 'Could not fetch chords from that URL.'
+          : 'Could not fetch chords or tab from that URL.'
       );
     } finally {
       setIsScrapingUrl(false);
     }
+  };
+
+  const handleGpFileSelected = async (file: File | null | undefined) => {
+    if (!file) return;
+    setUrlScrapeError(null);
+    setIsScrapingUrl(true);
+    try {
+      const arrayBuf = await file.arrayBuffer();
+      const gpScore = parseGuitarProBytes(new Uint8Array(arrayBuf));
+      const asciiTab = convertGpTrackToAsciiTab(
+        gpScore,
+        gpScore.defaultTrackIndex
+      );
+      setLoadedGpScore(gpScore);
+      setSelectedGpTrackIndex(gpScore.defaultTrackIndex);
+      setRawSource(asciiTab);
+      setIsUrlModalOpen(false);
+      setUrlInput('');
+      const fallbackTitle = file.name.replace(/\.(?:gp[345x]?)$/i, '').trim();
+      requestRunCompactor(
+        asciiTab,
+        compactorOptions,
+        gpScore.title || fallbackTitle
+      );
+    } catch (err) {
+      setUrlScrapeError(
+        err instanceof Error
+          ? `Could not parse Guitar Pro file: ${err.message}`
+          : 'Unsupported or corrupted Guitar Pro file.'
+      );
+    } finally {
+      setIsScrapingUrl(false);
+    }
+  };
+
+  const handleSelectGpTrack = (nextTrackIdx: number) => {
+    if (!loadedGpScore) return;
+    setSelectedGpTrackIndex(nextTrackIdx);
+    const asciiTab = convertGpTrackToAsciiTab(loadedGpScore, nextTrackIdx);
+    setRawSource(asciiTab);
+    requestRunCompactor(
+      asciiTab,
+      compactorOptions,
+      loadedGpScore.title || undefined
+    );
   };
 
   const handleToggleSimplify = () => {
@@ -543,15 +606,16 @@ export const SongEditorModal: React.FC<SongEditorModalProps> = ({
                       setUrlScrapeError(null);
                       setIsUrlModalOpen(true);
                     }}
-                    className="h-[26px] min-w-[78px] text-[11px] font-normal px-2.5 py-1 rounded-md bg-stone-800/80 hover:bg-stone-700 text-stone-400 hover:text-stone-200 border border-stone-700/70 flex items-center justify-center gap-1 transition cursor-pointer whitespace-nowrap"
+                    className="h-[26px] min-w-[78px] text-[11px] font-normal px-2.5 py-1 rounded-md bg-stone-800/80 hover:bg-stone-700 text-stone-300 hover:text-stone-100 border border-stone-700/70 flex items-center justify-center gap-1 transition cursor-pointer whitespace-nowrap"
                   >
                     <Globe className="w-3 h-3 text-amber-300/80 shrink-0" />
-                    <span>Add URL</span>
+                    <span>Import URL / Tab</span>
                   </button>
                   <button
                     type="button"
                     onClick={() => {
                       const demoWithHeader = RAW_SHALLOW_UG_SAMPLE;
+                      setLoadedGpScore(null);
                       setRawSource(demoWithHeader);
                       requestRunCompactor(
                         demoWithHeader,
@@ -626,10 +690,44 @@ export const SongEditorModal: React.FC<SongEditorModalProps> = ({
                 </label>
               </div>
 
+              {/* Contextual Guitar Pro Track Picker (shown only when a multi-track GP file or Songsterr tab is loaded) */}
+              {loadedGpScore && loadedGpScore.tracks.length > 1 && (
+                <div className="mb-2.5 px-3 py-1.5 rounded-xl bg-stone-900 border border-amber-400/30 flex items-center justify-between gap-2 text-xs">
+                  <span className="text-amber-300 font-mono flex items-center gap-1.5 shrink-0">
+                    <Music className="w-3.5 h-3.5" />
+                    <span>GP Track:</span>
+                  </span>
+                  <select
+                    value={selectedGpTrackIndex}
+                    onChange={(e) => handleSelectGpTrack(Number(e.target.value))}
+                    className="bg-stone-950 border border-stone-700 focus:border-amber-400 rounded-lg px-2 py-1 text-xs font-mono text-stone-200 focus:outline-none truncate max-w-[240px] cursor-pointer"
+                  >
+                    {loadedGpScore.tracks
+                      .filter((t) => !t.isPercussion)
+                      .map((t) => (
+                        <option key={t.index} value={t.index}>
+                          {t.index + 1}. {t.name} ({t.stringCount}-str)
+                        </option>
+                      ))}
+                  </select>
+                </div>
+              )}
+
               <textarea
                 value={rawSource}
                 onChange={(e) => setRawSource(e.target.value)}
-                placeholder={`Paste raw Ultimate Guitar chords & lyrics here (or click Add URL)...\n\nExample:\nSong Title - Artist\n\n[Verse 1]\n        C            Fmaj7\nAnd the women tug their hair\n            Cmaj7      Fmaj7\nLike they're trying to prove it won't fall out...`}
+                onDragOver={(e) => e.preventDefault()}
+                onDrop={(e) => {
+                  const droppedFile = e.dataTransfer?.files?.[0];
+                  if (
+                    droppedFile &&
+                    /\.(?:gp[345x]?)$/i.test(droppedFile.name)
+                  ) {
+                    e.preventDefault();
+                    handleGpFileSelected(droppedFile);
+                  }
+                }}
+                placeholder={`Paste raw Ultimate Guitar chords, lyrics, or ASCII tabs here (or click "Import URL / Tab")...\n\nExample:\nSong Title - Artist\n\n[Verse 1]\n        C            Fmaj7\nAnd the women tug their hair\n            Cmaj7      Fmaj7\nLike they're trying to prove it won't fall out...`}
                 className="min-h-[170px] sm:min-h-[200px] lg:min-h-0 lg:flex-1 w-full bg-stone-950 border border-stone-800 focus:border-amber-400/60 rounded-xl p-3 font-mono text-xs sm:text-sm text-stone-300 leading-relaxed resize-y lg:resize-none focus:outline-none"
                 spellCheck={false}
               />
@@ -802,7 +900,7 @@ export const SongEditorModal: React.FC<SongEditorModalProps> = ({
           </div>
         )}
 
-        {/* Add URL Scraper Popup Modal */}
+        {/* Unified Import URL / Tab Popup Modal */}
         {isUrlModalOpen && (
           <div
             onClick={() => {
@@ -813,15 +911,14 @@ export const SongEditorModal: React.FC<SongEditorModalProps> = ({
             }}
             className="absolute inset-0 z-50 bg-stone-950/80 backdrop-blur-sm flex items-center justify-center p-4"
           >
-            <form
+            <div
               onClick={(e) => e.stopPropagation()}
-              onSubmit={handleScrapeUrl}
               className="bg-stone-900 border border-stone-700 rounded-2xl p-5 sm:p-6 max-w-md w-full shadow-2xl"
             >
               <div className="flex items-center justify-between pb-3 mb-3.5 border-b border-stone-800">
                 <div className="flex items-center gap-2 text-sm sm:text-base font-bold text-stone-100">
                   <Globe className="w-4 h-4 text-amber-300 shrink-0" />
-                  <span>Import Chords from URL</span>
+                  <span>Import URL or Tab</span>
                 </div>
                 <button
                   type="button"
@@ -831,38 +928,119 @@ export const SongEditorModal: React.FC<SongEditorModalProps> = ({
                     setUrlScrapeError(null);
                   }}
                   className="p-1.5 rounded-lg bg-stone-800 hover:bg-stone-700 text-stone-300 transition cursor-pointer disabled:opacity-40"
-                  aria-label="Close URL modal"
+                  aria-label="Close Import modal"
                 >
                   <X className="w-4 h-4" />
                 </button>
               </div>
 
-              <p className="text-xs text-stone-400 mb-3 leading-relaxed">
-                Paste a link to an Ultimate Guitar (or other chord sheet) page.
-                We&apos;ll extract the song title, artist, and raw chords into
-                the input box.
+              <form onSubmit={handleScrapeUrl}>
+                <label className="block text-[11px] font-mono uppercase tracking-wider text-amber-300 mb-1.5">
+                  1. Import from Web URL
+                </label>
+                <p className="text-xs text-stone-400 mb-2.5 leading-relaxed">
+                  Supports <strong className="text-stone-200">Ultimate Guitar</strong>{' '}
+                  (chord sheets &amp; community ASCII tabs),{' '}
+                  <strong className="text-stone-200">Songsterr</strong> tabs,{' '}
+                  <strong className="text-stone-200">E-Chords</strong>,{' '}
+                  <strong className="text-stone-200">Cifra Club</strong>, and
+                  other chord/tab sites.
+                </p>
+
+                <div className="flex items-center gap-2 mb-3">
+                  <input
+                    type="url"
+                    value={urlInput}
+                    autoFocus
+                    disabled={isScrapingUrl}
+                    onChange={(e) => {
+                      setUrlInput(e.target.value);
+                      if (urlScrapeError) setUrlScrapeError(null);
+                    }}
+                    placeholder="https://tabs.ultimate-guitar.com/... or songsterr.com/..."
+                    className="flex-1 min-w-0 bg-stone-950 border border-stone-700 focus:border-amber-400 rounded-xl px-3 py-2 text-xs sm:text-sm font-mono text-stone-100 placeholder:text-stone-600 focus:outline-none"
+                  />
+                  <button
+                    type="submit"
+                    disabled={!urlInput.trim() || isScrapingUrl}
+                    className="px-3.5 py-2 rounded-xl text-xs font-semibold btn-primary disabled:opacity-40 flex items-center gap-1.5 transition cursor-pointer shrink-0"
+                  >
+                    {isScrapingUrl ? (
+                      <>
+                        <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                        <span>Fetching...</span>
+                      </>
+                    ) : (
+                      <>
+                        <Globe className="w-3.5 h-3.5" />
+                        <span>Fetch URL</span>
+                      </>
+                    )}
+                  </button>
+                </div>
+              </form>
+
+              <div className="relative my-4 flex items-center justify-center">
+                <div className="border-t border-stone-800 w-full" />
+                <span className="bg-stone-900 px-2.5 text-[10px] font-mono uppercase tracking-widest text-stone-500 shrink-0">
+                  OR UPLOAD GUITAR PRO FILE
+                </span>
+                <div className="border-t border-stone-800 w-full" />
+              </div>
+
+              <div>
+                <label className="block text-[11px] font-mono uppercase tracking-wider text-amber-300 mb-1.5">
+                  2. Guitar Pro File (.gp, .gp3–.gp5, .gpx)
+                </label>
+                <input
+                  ref={gpFileInputRef}
+                  type="file"
+                  accept=".gp,.gp3,.gp4,.gp5,.gpx"
+                  className="hidden"
+                  onChange={(e) => {
+                    const file = e.target.files?.[0];
+                    if (file) {
+                      handleGpFileSelected(file);
+                    }
+                    e.target.value = '';
+                  }}
+                />
+                <div
+                  onDragOver={(e) => e.preventDefault()}
+                  onDrop={(e) => {
+                    e.preventDefault();
+                    const file = e.dataTransfer?.files?.[0];
+                    if (file) {
+                      handleGpFileSelected(file);
+                    }
+                  }}
+                  onClick={() => !isScrapingUrl && gpFileInputRef.current?.click()}
+                  className="w-full rounded-xl border border-dashed border-stone-700 hover:border-amber-400/70 bg-stone-950/70 hover:bg-stone-950 px-4 py-3.5 text-center transition cursor-pointer flex flex-col items-center gap-1.5"
+                >
+                  <Upload className="w-4 h-4 text-amber-300" />
+                  <span className="text-xs font-medium text-stone-200">
+                    Click to choose a Guitar Pro file or drag &amp; drop here
+                  </span>
+                  <span className="text-[11px] text-stone-500">
+                    Extracts measures, infers chords &amp; chunks repeating riffs
+                  </span>
+                </div>
+              </div>
+
+              <p className="mt-3.5 text-[11px] text-stone-400 bg-stone-950/80 border border-stone-800/80 rounded-xl px-3 py-2 leading-snug">
+                💡 <strong className="text-stone-300">Plain-text ASCII tabs:</strong>{' '}
+                Paste any raw ASCII tab directly into the Raw Chords box and
+                click <strong className="text-amber-300">Compact</strong> to
+                slice bars and collapse repeats automatically.
               </p>
 
-              <input
-                type="url"
-                value={urlInput}
-                autoFocus
-                disabled={isScrapingUrl}
-                onChange={(e) => {
-                  setUrlInput(e.target.value);
-                  if (urlScrapeError) setUrlScrapeError(null);
-                }}
-                placeholder="https://tabs.ultimate-guitar.com/tab/..."
-                className="w-full bg-stone-950 border border-stone-700 focus:border-amber-400 rounded-xl px-3.5 py-2.5 text-xs sm:text-sm font-mono text-stone-100 placeholder:text-stone-600 focus:outline-none mb-3"
-              />
-
               {urlScrapeError && (
-                <div className="mb-3 px-3 py-2 rounded-xl bg-rose-500/15 border border-rose-500/30 text-rose-300 text-xs leading-snug">
+                <div className="mt-3 px-3 py-2 rounded-xl bg-rose-500/15 border border-rose-500/30 text-rose-300 text-xs leading-snug">
                   {urlScrapeError}
                 </div>
               )}
 
-              <div className="flex items-center justify-end gap-2">
+              <div className="mt-4 flex items-center justify-end">
                 <button
                   type="button"
                   disabled={isScrapingUrl}
@@ -870,29 +1048,12 @@ export const SongEditorModal: React.FC<SongEditorModalProps> = ({
                     setIsUrlModalOpen(false);
                     setUrlScrapeError(null);
                   }}
-                  className="px-3.5 py-2 rounded-lg text-xs font-medium bg-stone-800 hover:bg-stone-700 text-stone-300 transition cursor-pointer disabled:opacity-40"
+                  className="px-3.5 py-1.5 rounded-lg text-xs font-medium bg-stone-800 hover:bg-stone-700 text-stone-300 transition cursor-pointer disabled:opacity-40"
                 >
-                  Cancel
-                </button>
-                <button
-                  type="submit"
-                  disabled={!urlInput.trim() || isScrapingUrl}
-                  className="px-4 py-2 rounded-lg text-xs font-semibold btn-primary disabled:opacity-40 flex items-center gap-1.5 transition cursor-pointer"
-                >
-                  {isScrapingUrl ? (
-                    <>
-                      <Loader2 className="w-3.5 h-3.5 animate-spin" />
-                      <span>Fetching Chords...</span>
-                    </>
-                  ) : (
-                    <>
-                      <Globe className="w-3.5 h-3.5" />
-                      <span>Fetch Chords</span>
-                    </>
-                  )}
+                  Close
                 </button>
               </div>
-            </form>
+            </div>
           </div>
         )}
 

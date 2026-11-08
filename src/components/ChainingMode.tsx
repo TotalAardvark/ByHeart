@@ -18,9 +18,17 @@ import {
   X,
   Check,
   Pencil,
+  Play,
+  Square,
 } from 'lucide-react';
 import { ChainingGranularity, ParsedPart, SongItem } from '../types';
 import { parseSongBody } from '../lib/parser';
+import {
+  getActivePlayingId,
+  stopTabPlayback,
+  subscribeTabPlayback,
+  togglePlayTabLines,
+} from '../lib/tabAudioPlayer';
 import {
   buildGuidedChainSteps,
   buildSlidingWindowSteps,
@@ -194,6 +202,17 @@ export const ChainingMode: React.FC<ChainingModeProps> = ({
   const [expandedRepeatParts, setExpandedRepeatParts] = useState<
     Record<number, boolean>
   >({});
+  const [playingAudioId, setPlayingAudioId] = useState<string | null>(() =>
+    getActivePlayingId()
+  );
+
+  useEffect(() => {
+    const unsub = subscribeTabPlayback((id) => setPlayingAudioId(id));
+    return () => {
+      unsub();
+      stopTabPlayback();
+    };
+  }, []);
 
   const parsed = useMemo(
     () => parseSongBody(song.body, song.chunkSize),
@@ -821,12 +840,18 @@ export const ChainingMode: React.FC<ChainingModeProps> = ({
       );
     };
 
+    const partTabLines = part.lines
+      .filter((l) => l.isTabLine)
+      .map((l) => l.lyric);
+    const partPlayId = `chain-part-${part.partIndex}`;
+    const isPlayingThisPart = playingAudioId === partPlayId;
+
     return (
       <div
         key={part.partIndex}
         className="border-l-2 border-stone-800 pl-4 py-0.5 w-max"
       >
-        {/* Section / Chunk Header with Refine Pencil */}
+        {/* Section / Chunk Header with Refine Pencil & Contextual Tab Audio Play Button */}
         {part.isFirstChunkOfSection || visibleParts.length === 1 ? (
           <div className="flex items-center gap-2 mb-1.5 whitespace-nowrap">
             <span className="text-xs uppercase tracking-widest font-bold text-stone-400">
@@ -844,6 +869,33 @@ export const ChainingMode: React.FC<ChainingModeProps> = ({
             >
               <Pencil className="w-3.5 h-3.5" />
             </button>
+            {partTabLines.length > 0 && (
+              <button
+                type="button"
+                data-no-stage-advance
+                onClick={(e) => {
+                  e.stopPropagation();
+                  togglePlayTabLines(partPlayId, partTabLines);
+                }}
+                title={
+                  isPlayingThisPart
+                    ? 'Stop tab audio preview'
+                    : 'Play tab chunk audio preview'
+                }
+                className={`px-1.5 py-0.5 rounded-md border text-[10px] font-mono inline-flex items-center gap-1 transition cursor-pointer ${
+                  isPlayingThisPart
+                    ? 'bg-amber-400/20 border-amber-400/50 text-amber-300'
+                    : 'bg-stone-900 hover:bg-stone-800 border-stone-700/80 text-stone-400 hover:text-amber-300'
+                }`}
+              >
+                {isPlayingThisPart ? (
+                  <Square className="w-2.5 h-2.5 fill-current" />
+                ) : (
+                  <Play className="w-2.5 h-2.5 fill-current" />
+                )}
+                <span>{isPlayingThisPart ? 'Stop' : 'Play'}</span>
+              </button>
+            )}
             {isRepeatPart && isExpanded && (
               <button
                 data-no-stage-advance
@@ -877,6 +929,33 @@ export const ChainingMode: React.FC<ChainingModeProps> = ({
             >
               <Pencil className="w-3.5 h-3.5" />
             </button>
+            {partTabLines.length > 0 && (
+              <button
+                type="button"
+                data-no-stage-advance
+                onClick={(e) => {
+                  e.stopPropagation();
+                  togglePlayTabLines(partPlayId, partTabLines);
+                }}
+                title={
+                  isPlayingThisPart
+                    ? 'Stop tab audio preview'
+                    : 'Play tab chunk audio preview'
+                }
+                className={`px-1.5 py-0.5 rounded-md border text-[10px] font-mono inline-flex items-center gap-1 transition cursor-pointer ${
+                  isPlayingThisPart
+                    ? 'bg-amber-400/20 border-amber-400/50 text-amber-300'
+                    : 'bg-stone-900 hover:bg-stone-800 border-stone-700/80 text-stone-400 hover:text-amber-300'
+                }`}
+              >
+                {isPlayingThisPart ? (
+                  <Square className="w-2.5 h-2.5 fill-current" />
+                ) : (
+                  <Play className="w-2.5 h-2.5 fill-current" />
+                )}
+                <span>{isPlayingThisPart ? 'Stop' : 'Play'}</span>
+              </button>
+            )}
           </div>
         )}
 

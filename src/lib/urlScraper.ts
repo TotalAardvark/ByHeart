@@ -3,6 +3,12 @@
  * from Ultimate Guitar and other chord sheet websites.
  */
 
+import {
+  ParsedGpScore,
+  convertGpTrackToAsciiTab,
+  parseGuitarProBytes,
+} from './gpImporter';
+
 export interface ScrapedChordSheet {
   /** Formatted raw chord sheet with "Song Title - Artist" on line 1 */
   rawText: string;
@@ -12,6 +18,8 @@ export interface ScrapedChordSheet {
   artistName?: string;
   /** Combined "Song Title - Artist" header line (if detected) */
   titleAndArtist?: string;
+  /** Present if the URL resolved to a multi-track Guitar Pro / Songsterr score */
+  gpScore?: ParsedGpScore;
 }
 
 /**
@@ -215,8 +223,80 @@ export function parseChordSheetFromHtml(
 }
 
 /**
- * Fetches a chord URL via local dev middleware or public CORS proxies and parses
- * the raw chord sheet (including song title and artist on line 1).
+ * Extracts Songsterr metadata and the CloudFront Guitar Pro source URL from a Songsterr HTML page.
+ */
+export function extractSongsterrInfoFromHtml(html: string): {
+  sourceGpUrl: string;
+  songTitle?: string;
+  artistName?: string;
+} | null {
+  // 1. Check `<script id="state" type="application/json">`
+  const stateMatch = html.match(
+    /<script[^>]+id=["']state["'][^>]*>([\s\S]*?)<\/script>/i
+  );
+  if (stateMatch && stateMatch[1]) {
+    try {
+      const stateJson = JSON.parse(stateMatch[1].trim());
+      const current = stateJson?.meta?.current;
+      if (current && typeof current.source === 'string' && current.source) {
+        return {
+          sourceGpUrl: current.source,
+          songTitle:
+            typeof current.title === 'string' ? current.title.trim() : undefined,
+          artistName:
+            typeof current.artist === 'string'
+              ? current.artist.trim()
+              : undefined,
+        };
+      }
+    } catch {
+      // Fall through to regex search
+    }
+  }
+
+  // 2. Fallback regex for `"source":"https://...cloudfront.net/...gp..."`
+  const sourceRegexMatch = html.match(
+    /"source"\s*:\s*"(https?:\/\/[^"]+\.(?:gp\d?|gpx)[^"]*)"/i
+  );
+  if (sourceRegexMatch && sourceRegexMatch[1]) {
+    const sourceGpUrl = sourceRegexMatch[1].replace(/\\u002F/g, '/').replace(/\\\//g, '/');
+    const titleMatch = html.match(/"title"\s*:\s*"((?:\\.|[^"\\])*)"/);
+    const artistMatch = html.match(/"artist"\s*:\s*"((?:\\.|[^"\\])*)"/);
+    return {
+      sourceGpUrl,
+      songTitle: titleMatch ? titleMatch[1].trim() : undefined,
+      artistName: artistMatch ? artistMatch[1].trim() : undefined,
+    };
+  }
+
+  return null;
+}
+
+async function fetchBinaryBytesWithFallback(targetUrl: string): Promise<Uint8Array> {
+  const endpoints = [
+    targetUrl,
+    `/api/scrape-url?url=${encodeURIComponent(targetUrl)}`,
+    `https://corsproxy.io/?${encodeURIComponent(targetUrl)}`,
+  ];
+
+  for (const endpoint of endpoints) {
+    try {
+      const res = await fetch(endpoint);
+      if (!res.ok) continue;
+      const buf = await res.arrayBuffer();
+      if (buf.byteLength > 32) {
+        return new Uint8Array(buf);
+      }
+    } catch {
+      // try next endpoint
+    }
+  }
+  throw new Error('Could not download the Guitar Pro tab binary stream.');
+}
+
+/**
+ * Fetches a chord or tab URL via local dev middleware or public CORS proxies and parses
+ * the raw chord sheet or Songsterr / Guitar Pro tab (including song title and artist on line 1).
  */
 export async function fetchChordSheetFromUrl(
   rawUrl: string
@@ -234,7 +314,26 @@ export async function fetchChordSheetFromUrl(
   try {
     parsedUrl = new URL(normalizedUrl);
   } catch {
-    throw new Error('Please enter a valid web URL (e.g. https://tabs.ultimate-guitar.com/...).');
+    throw new Error(
+      'Please enter a valid web URL (e.g. https://tabs.ultimate-guitar.com/... or https://www.songsterr.com/...).'
+    );
+  }
+
+  // Direct link to a .gp / .gp3 / .gp4 / .gp5 / .gpx file
+  if (/\.(?:gp[345x]?)$/i.test(parsedUrl.pathname)) {
+    const bytes = await fetchBinaryBytesWithFallback(parsedUrl.toString());
+    const gpScore = parseGuitarProBytes(bytes);
+    const rawText = convertGpTrackToAsciiTab(gpScore, gpScore.defaultTrackIndex);
+    return {
+      rawText,
+      songTitle: gpScore.title || undefined,
+      artistName: gpScore.artist || undefined,
+      titleAndArtist:
+        gpScore.title && gpScore.artist
+          ? `${gpScore.title} - ${gpScore.artist}`
+          : gpScore.title || undefined,
+      gpScore,
+    };
   }
 
   const endpoints = [
@@ -253,7 +352,8 @@ export async function fetchChordSheetFromUrl(
       const res = await fetch(endpoint, {
         signal: controller.signal,
         headers: {
-          Accept: 'text/html,application/xhtml+xml,application/json;q=0.9,*/*;q=0.8',
+          Accept:
+            'text/html,application/xhtml+xml,application/json;q=0.9,*/*;q=0.8',
         },
       });
       clearTimeout(timeout);
@@ -274,22 +374,54 @@ export async function fetchChordSheetFromUrl(
         continue;
       }
 
-      if (contentType.includes('application/json') && text.trim().startsWith('{')) {
+      let htmlPayload = text;
+      if (
+        contentType.includes('application/json') &&
+        text.trim().startsWith('{')
+      ) {
         try {
           const json = JSON.parse(text);
           if (typeof json.contents === 'string') {
-            return parseChordSheetFromHtml(json.contents, parsedUrl.hostname);
-          }
-          if (typeof json.html === 'string') {
-            return parseChordSheetFromHtml(json.html, parsedUrl.hostname);
+            htmlPayload = json.contents;
+          } else if (typeof json.html === 'string') {
+            htmlPayload = json.html;
           }
         } catch {
           // Not a wrapper JSON, continue to HTML parser
         }
       }
 
-      if (text && text.length > 100) {
-        return parseChordSheetFromHtml(text, parsedUrl.hostname);
+      // Check if this is a Songsterr page with an embedded Guitar Pro source URL!
+      const songsterrInfo = extractSongsterrInfoFromHtml(htmlPayload);
+      if (songsterrInfo) {
+        const bytes = await fetchBinaryBytesWithFallback(
+          songsterrInfo.sourceGpUrl
+        );
+        const gpScore = parseGuitarProBytes(bytes);
+        if (!gpScore.title && songsterrInfo.songTitle) {
+          gpScore.title = songsterrInfo.songTitle;
+        }
+        if (!gpScore.artist && songsterrInfo.artistName) {
+          gpScore.artist = songsterrInfo.artistName;
+        }
+        const rawText = convertGpTrackToAsciiTab(
+          gpScore,
+          gpScore.defaultTrackIndex
+        );
+        return {
+          rawText,
+          songTitle: gpScore.title || songsterrInfo.songTitle,
+          artistName: gpScore.artist || songsterrInfo.artistName,
+          titleAndArtist:
+            gpScore.title && gpScore.artist
+              ? `${gpScore.title} - ${gpScore.artist}`
+              : gpScore.title || undefined,
+          gpScore,
+        };
+      }
+
+      if (htmlPayload && htmlPayload.length > 100) {
+        return parseChordSheetFromHtml(htmlPayload, parsedUrl.hostname);
       }
     } catch (err) {
       if (err instanceof Error) {
@@ -301,7 +433,7 @@ export async function fetchChordSheetFromUrl(
   throw (
     lastError ||
     new Error(
-      'Unable to fetch chord sheet from URL. The site may be blocking automated requests or behind a CAPTCHA.'
+      'Unable to fetch chord sheet or tab from URL. The site may be blocking automated requests or behind a CAPTCHA.'
     )
   );
 }

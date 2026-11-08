@@ -13,6 +13,8 @@ import {
   EyeOff,
   Trash2,
   RefreshCw,
+  Play,
+  Square,
 } from 'lucide-react';
 import { ParsedSection, SongItem } from '../types';
 import { parseSongBody } from '../lib/parser';
@@ -22,6 +24,13 @@ import {
   selectOptimalColumnCount,
   splitIntoBalancedColumns,
 } from '../lib/layoutUtils';
+import { tokenizeTabLineForScaffold } from '../lib/tabAnalyzer';
+import {
+  getActivePlayingId,
+  stopTabPlayback,
+  subscribeTabPlayback,
+  togglePlayTabLines,
+} from '../lib/tabAudioPlayer';
 
 interface ScaffoldModeProps {
   song: SongItem;
@@ -44,6 +53,17 @@ export const ScaffoldMode: React.FC<ScaffoldModeProps> = ({
   const [highlights, setHighlights] = useState<Set<string>>(
     () => new Set(song.customHighlights || [])
   );
+  const [playingAudioId, setPlayingAudioId] = useState<string | null>(() =>
+    getActivePlayingId()
+  );
+
+  useEffect(() => {
+    const unsub = subscribeTabPlayback((id) => setPlayingAudioId(id));
+    return () => {
+      unsub();
+      stopTabPlayback();
+    };
+  }, []);
 
   // Track click-drag word painting state
   const dragPaintModeRef = useRef<'add' | 'remove' | null>(null);
@@ -306,13 +326,47 @@ export const ScaffoldMode: React.FC<ScaffoldModeProps> = ({
       );
     }
 
+    const sectionTabLines = sec.lines
+      .filter((l) => l.isTabLine)
+      .map((l) => l.lyric);
+    const sectionPlayId = `scaffold-sec-${sec.sectionIndex}`;
+    const isPlayingThisSection = playingAudioId === sectionPlayId;
+
     return (
       <div
         key={sec.sectionIndex}
         className="border-l-2 border-stone-800 pl-4 py-0.5 w-max"
       >
-        <div className="text-xs uppercase tracking-widest font-bold text-stone-400 mb-1 whitespace-nowrap">
-          {sec.fullHeader}
+        <div className="flex items-center gap-2 mb-1 whitespace-nowrap">
+          <span className="text-xs uppercase tracking-widest font-bold text-stone-400">
+            {sec.fullHeader}
+          </span>
+          {sectionTabLines.length > 0 && (
+            <button
+              type="button"
+              onClick={(e) => {
+                e.stopPropagation();
+                togglePlayTabLines(sectionPlayId, sectionTabLines);
+              }}
+              title={
+                isPlayingThisSection
+                  ? 'Stop tab audio preview'
+                  : 'Play tab chunk audio preview'
+              }
+              className={`px-1.5 py-0.5 rounded-md border text-[10px] font-mono inline-flex items-center gap-1 transition cursor-pointer ${
+                isPlayingThisSection
+                  ? 'bg-amber-400/20 border-amber-400/50 text-amber-300'
+                  : 'bg-stone-900 hover:bg-stone-800 border-stone-700/80 text-stone-400 hover:text-amber-300'
+              }`}
+            >
+              {isPlayingThisSection ? (
+                <Square className="w-2.5 h-2.5 fill-current" />
+              ) : (
+                <Play className="w-2.5 h-2.5 fill-current" />
+              )}
+              <span>{isPlayingThisSection ? 'Stop' : 'Play'}</span>
+            </button>
+          )}
         </div>
 
         {sec.standaloneProgressions.map((prog, idx) => (
@@ -364,9 +418,49 @@ export const ScaffoldMode: React.FC<ScaffoldModeProps> = ({
                 )}
 
                 {line.isTabLine ? (
-                  /* Keep ASCII TAB lines unmasked in Word Scaffold mode */
                   <div className="whitespace-pre text-stone-300 text-base sm:text-lg leading-tight">
-                    {line.lyric}
+                    {tokenizeTabLineForScaffold(line.lyric).map((seg, sIdx) => {
+                      if (seg.type === 'structure') {
+                        return (
+                          <span key={sIdx} className="text-stone-400">
+                            {seg.text}
+                          </span>
+                        );
+                      }
+                      const noteKey = `${sec.sectionIndex}:${line.lineIndexInSection}:${seg.noteIndex}`;
+                      const isCustomHighlighted = highlights.has(noteKey);
+                      const isAutoOpeningNote =
+                        everyNLines > 0 &&
+                        seg.noteIndexInMeasure === 0 &&
+                        (everyNLines === 2 || (seg.measureIndex ?? 0) % 2 === 0);
+                      const isVisibleAnchor =
+                        isCustomHighlighted || isAutoOpeningNote;
+                      const maskedFret = '─'.repeat(seg.text.length);
+
+                      return (
+                        <span
+                          key={sIdx}
+                          onPointerDown={(e) =>
+                            handleWordPointerDown(noteKey, e)
+                          }
+                          onPointerEnter={() => handleWordPointerEnter(noteKey)}
+                          title="Click or drag across fret numbers to toggle custom scaffold anchor"
+                          className={`inline-block rounded px-0.5 -mx-0.5 transition cursor-pointer ${
+                            isCustomHighlighted
+                              ? 'bg-amber-400/25 text-amber-200 font-bold ring-1 ring-amber-400/50'
+                              : isAutoOpeningNote
+                              ? 'bg-emerald-500/20 text-emerald-200 font-semibold ring-1 ring-emerald-500/40'
+                              : viewMode === 'edit'
+                              ? 'text-stone-200 hover:bg-stone-800/70'
+                              : 'text-stone-700 hover:text-stone-400 bg-stone-900/50'
+                          }`}
+                        >
+                          {isVisibleAnchor || viewMode === 'edit'
+                            ? seg.text
+                            : maskedFret}
+                        </span>
+                      );
+                    })}
                   </div>
                 ) : (
                   <div

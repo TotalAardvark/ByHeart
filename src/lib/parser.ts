@@ -117,13 +117,14 @@ export function parseSongBody(body: string, chunkSize = 4): ParsedSong {
   let activeProgression: string | undefined = undefined;
   let pendingBracketedProgressions: string[] = [];
   let pendingChordOverLine: string | undefined = undefined;
+  let pendingTokenStartLine: number | null = null;
   let globalLineIndex = 0;
 
   let isInsideSilencedBlock = false;
   let activeLockedChunkGroupId: number | undefined = undefined;
   let nextLockedChunkGroupId = 1;
 
-  const ensureDefaultSection = () => {
+  const ensureDefaultSection = (lineIdx: number) => {
     if (!currentSection) {
       currentSection = {
         sectionIndex: sections.length,
@@ -134,6 +135,8 @@ export function parseSongBody(body: string, chunkSize = 4): ParsedSong {
         isRepeatOfSectionIndex: null,
         lines: [],
         standaloneProgressions: [],
+        rawStartLine: lineIdx,
+        rawEndLine: lineIdx,
       };
       sections.push(currentSection);
     }
@@ -195,6 +198,9 @@ export function parseSongBody(body: string, chunkSize = 4): ParsedSong {
     // 0B. Handle `{ ... }` Locked Chunk blocks
     if (trimmed === '{') {
       activeLockedChunkGroupId = nextLockedChunkGroupId++;
+      if (pendingTokenStartLine === null) {
+        pendingTokenStartLine = i;
+      }
       continue;
     }
     if (trimmed === '}') {
@@ -205,6 +211,9 @@ export function parseSongBody(body: string, chunkSize = 4): ParsedSong {
     let closeLockedGroupAfterThisLine = false;
     if (trimmed.startsWith('{') && activeLockedChunkGroupId === undefined) {
       activeLockedChunkGroupId = nextLockedChunkGroupId++;
+      if (pendingTokenStartLine === null) {
+        pendingTokenStartLine = i;
+      }
       rawLine = rawLine.replace(/^\s*\{\s?/, '');
       trimmed = rawLine.trim();
       if (trimmed.endsWith('}')) {
@@ -243,7 +252,14 @@ export function parseSongBody(body: string, chunkSize = 4): ParsedSong {
 
     if (numberedHeader || ugSectionHeader) {
       flushDanglingTokensToSection();
+      if (currentSection) {
+        currentSection.rawEndLine = Math.max(
+          currentSection.rawStartLine ?? 0,
+          i - 1
+        );
+      }
       activeLockedChunkGroupId = undefined;
+      pendingTokenStartLine = null;
 
       const numberLabel = numberedHeader
         ? numberedHeader.numberLabel
@@ -259,6 +275,8 @@ export function parseSongBody(body: string, chunkSize = 4): ParsedSong {
         isRepeatOfSectionIndex: null,
         lines: [],
         standaloneProgressions: [],
+        rawStartLine: i,
+        rawEndLine: i,
       };
       sections.push(currentSection);
       continue;
@@ -266,10 +284,16 @@ export function parseSongBody(body: string, chunkSize = 4): ParsedSong {
 
     // 2. Check for bracketed chord progression: "[ C - F ]" or "[ Em7 - D/F# - G | C - G - D ]"
     if (isBracketedChordProgression(trimmed)) {
-      ensureDefaultSection();
+      ensureDefaultSection(i);
       const prog = cleanBracketedProgression(trimmed);
       activeProgression = prog;
       pendingBracketedProgressions.push(prog);
+      if (pendingTokenStartLine === null) {
+        pendingTokenStartLine = i;
+      }
+      if (currentSection) {
+        currentSection.rawEndLine = i;
+      }
       if (closeLockedGroupAfterThisLine) {
         activeLockedChunkGroupId = undefined;
       }
@@ -278,12 +302,18 @@ export function parseSongBody(body: string, chunkSize = 4): ParsedSong {
 
     // 3. Check for chord-over-lyric exception line: "   G" or "                          E"
     if (isChordOverLyricLine(rawLine) && !isAsciiTabLine(rawLine)) {
-      ensureDefaultSection();
+      ensureDefaultSection(i);
       if (pendingChordOverLine) {
         // Previous chord line had no lyric line beneath it; treat it as standalone progression
         currentSection!.standaloneProgressions.push(pendingChordOverLine.trim());
       }
       pendingChordOverLine = rawLine.replace(/\s+$/, '');
+      if (pendingTokenStartLine === null) {
+        pendingTokenStartLine = i;
+      }
+      if (currentSection) {
+        currentSection.rawEndLine = i;
+      }
       if (closeLockedGroupAfterThisLine) {
         activeLockedChunkGroupId = undefined;
       }
@@ -307,7 +337,7 @@ export function parseSongBody(body: string, chunkSize = 4): ParsedSong {
     }
 
     // 5. Regular lyric line (or ASCII TAB line inside a section)
-    ensureDefaultSection();
+    ensureDefaultSection(i);
     const lyricText = rawLine.trimEnd();
     const isTab = isAsciiTabLine(lyricText);
 
@@ -323,6 +353,10 @@ export function parseSongBody(body: string, chunkSize = 4): ParsedSong {
         ? pendingBracketedProgressions.slice(0, -1)
         : undefined;
 
+    const lineStartLine =
+      pendingTokenStartLine !== null ? pendingTokenStartLine : i;
+    const lineEndLine = i;
+
     const lineObj: ParsedLyricLine = {
       lineIndexInSection: currentSection!.lines.length,
       globalLineIndex: globalLineIndex++,
@@ -334,11 +368,15 @@ export function parseSongBody(body: string, chunkSize = 4): ParsedSong {
       activeProgression,
       lockedChunkGroupId: activeLockedChunkGroupId,
       isTabLine: isTab || undefined,
+      rawStartLine: lineStartLine,
+      rawEndLine: lineEndLine,
     };
 
     currentSection!.lines.push(lineObj);
+    currentSection!.rawEndLine = i;
     pendingChordOverLine = undefined;
     pendingBracketedProgressions = [];
+    pendingTokenStartLine = null;
 
     if (closeLockedGroupAfterThisLine) {
       activeLockedChunkGroupId = undefined;
@@ -346,6 +384,12 @@ export function parseSongBody(body: string, chunkSize = 4): ParsedSong {
   }
 
   flushDanglingTokensToSection();
+  if (currentSection) {
+    currentSection.rawEndLine = Math.max(
+      currentSection.rawStartLine ?? 0,
+      rawLines.length - 1
+    );
+  }
 
   // Resolve repeated sections:
   // Case A: An empty section like "5. Chorus" matches an earlier section with the same canonicalName ("3. Chorus").
@@ -412,6 +456,8 @@ export function parseSongBody(body: string, chunkSize = 4): ParsedSong {
       repeatOfSectionHeader: repeatHeader,
       lines: sec.lines,
       standaloneProgressions: sec.standaloneProgressions,
+      rawStartLine: sec.rawStartLine,
+      rawEndLine: sec.rawEndLine,
     });
 
     // 2. Chunk parts (default 4 lines per chunk, keeping `{ ... }` groups locked together)
@@ -437,12 +483,22 @@ export function parseSongBody(body: string, chunkSize = 4): ParsedSong {
         repeatOfSectionHeader: repeatHeader,
         lines: sec.lines,
         standaloneProgressions: sec.standaloneProgressions,
+        rawStartLine: sec.rawStartLine,
+        rawEndLine: sec.rawEndLine,
       });
     } else {
       const totalChunks = partitionedSlices.length;
       for (let c = 0; c < totalChunks; c++) {
         const slice = partitionedSlices[c];
         const suffix = String.fromCharCode(97 + c); // a, b, c...
+        const firstLine = slice[0];
+        const lastLine = slice[slice.length - 1];
+        const chunkStartLine =
+          c === 0 && sec.rawStartLine !== undefined
+            ? sec.rawStartLine
+            : (firstLine?.rawStartLine ?? sec.rawStartLine);
+        const chunkEndLine = lastLine?.rawEndLine ?? sec.rawEndLine;
+
         chunkParts.push({
           partIndex: chunkParts.length,
           pillLabel: makePillLabel(sec.numberLabel, sec.name, c, totalChunks),
@@ -455,6 +511,8 @@ export function parseSongBody(body: string, chunkSize = 4): ParsedSong {
           isRepeatOfSectionIndex: null,
           lines: slice,
           standaloneProgressions: c === 0 ? sec.standaloneProgressions : [],
+          rawStartLine: chunkStartLine,
+          rawEndLine: chunkEndLine,
         });
       }
     }

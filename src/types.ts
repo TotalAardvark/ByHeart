@@ -65,6 +65,10 @@ export interface ParsedLyricLine {
    * so Scaffold mode keeps it unmasked and Stage views render it with tight line-height.
    */
   isTabLine?: boolean;
+  /** 0-based start line index in the raw input text (including attached chord/loop/brace lines) */
+  rawStartLine?: number;
+  /** 0-based end line index in the raw input text */
+  rawEndLine?: number;
 }
 
 export interface ParsedSection {
@@ -86,6 +90,10 @@ export interface ParsedSection {
   lines: ParsedLyricLine[];
   /** Trailing bracketed progression if section has only chords and no lyrics (e.g. instrumental intro) */
   standaloneProgressions: string[];
+  /** 0-based start line index of this section in the raw input text */
+  rawStartLine?: number;
+  /** 0-based end line index of this section in the raw input text */
+  rawEndLine?: number;
 }
 
 export interface ParsedPart {
@@ -107,6 +115,10 @@ export interface ParsedPart {
   repeatOfSectionHeader?: string;
   lines: ParsedLyricLine[];
   standaloneProgressions: string[];
+  /** 0-based start line index of this chunk/part in the raw input text */
+  rawStartLine?: number;
+  /** 0-based end line index of this chunk/part in the raw input text */
+  rawEndLine?: number;
 }
 
 export interface ParsedSong {

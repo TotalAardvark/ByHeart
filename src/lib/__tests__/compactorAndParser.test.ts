@@ -272,6 +272,84 @@ Is there something else you're searchin' for?
       'Em7 - D/F# - G | C - G - D'
     );
   });
+
+  it('accurately tracks rawStartLine and rawEndLine for sections and chunks for in-place refining', () => {
+    const rawSong = `A Song Title
+Artist Name
+
+1. Verse 1
+[ G - D ]
+Line 1
+Line 2
+Line 3
+Line 4
+Line 5
+Line 6
+
+2. Chorus
+[ C - G ]
+Chorus Line 1
+Chorus Line 2
+`;
+    const parsed = parseSongBody(rawSong, 4);
+
+    // Section 1: Verse 1 starts at line 3 ("1. Verse 1")
+    const verse1 = parsed.sections[0];
+    expect(verse1.rawStartLine).toBe(3);
+
+    // Chunk 1a has lines 1-4: rawStartLine = 3 (includes section header & progression), rawEndLine = 8 ("Line 4")
+    const chunk1a = parsed.chunkParts[0];
+    expect(chunk1a.title).toContain('1. Verse 1 (A)');
+    expect(chunk1a.rawStartLine).toBe(3);
+    expect(chunk1a.rawEndLine).toBe(8);
+
+    // Chunk 1b has lines 5-6: rawStartLine = 9 ("Line 5"), rawEndLine = 10 ("Line 6")
+    const chunk1b = parsed.chunkParts[1];
+    expect(chunk1b.title).toContain('1. Verse 1 (B)');
+    expect(chunk1b.rawStartLine).toBe(9);
+    expect(chunk1b.rawEndLine).toBe(10);
+
+    // Section 2: Chorus starts at line 12 ("2. Chorus")
+    const chorus = parsed.sections[1];
+    expect(chorus.rawStartLine).toBe(12);
+    const chorusChunk = parsed.chunkParts[2];
+    expect(chorusChunk.title).toContain('2. Chorus');
+    expect(chorusChunk.rawStartLine).toBe(12);
+  });
+
+  it('preserves line indexing when chord-over-lyric lines and locked chunks are parsed', () => {
+    const rawSong = `1. Verse 1
+   G          D
+A line with chords
+   Em         C
+Second line with chords
+{
+Third line locked
+Fourth line locked
+}
+Fifth line alone
+`;
+    const parsed = parseSongBody(rawSong, 2);
+    expect(parsed.sections).toHaveLength(1);
+    const sec = parsed.sections[0];
+    expect(sec.rawStartLine).toBe(0);
+    expect(sec.rawEndLine).toBe(10); // line 10 is the trailing line at end of string
+
+    // First chunk has line 1 and line 2 (indices 0 to 4 in raw lines)
+    const chunk1 = parsed.chunkParts[0];
+    expect(chunk1.rawStartLine).toBe(0); // Starts at section header
+    expect(chunk1.rawEndLine).toBe(4); // Ends after second lyric line
+
+    // Second chunk is the { ... } locked block
+    const chunk2 = parsed.chunkParts[1];
+    expect(chunk2.rawStartLine).toBe(5); // Starts at "{"
+    expect(chunk2.rawEndLine).toBe(7); // Ends at "Fourth line locked"
+
+    // Third chunk is Fifth line alone
+    const chunk3 = parsed.chunkParts[2];
+    expect(chunk3.rawStartLine).toBe(9); // "Fifth line alone"
+    expect(chunk3.rawEndLine).toBe(9);
+  });
 });
 
 describe('Color Palette Themes', () => {

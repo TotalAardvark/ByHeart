@@ -17,6 +17,7 @@ import {
   ChevronDown,
   X,
   Check,
+  Pencil,
 } from 'lucide-react';
 import { ChainingGranularity, ParsedPart, SongItem } from '../types';
 import { parseSongBody } from '../lib/parser';
@@ -30,17 +31,20 @@ import {
   selectOptimalColumnCount,
   splitIntoBalancedColumns,
 } from '../lib/layoutUtils';
+import { selectPracticeTipForStep } from '../lib/practiceTips';
 import {
   BlankingConfig,
   BlankingPopover,
   DEFAULT_BLANKING_CONFIG,
 } from './BlankingPopover';
+import { RefineChunkModal } from './RefineChunkModal';
 
 interface ChainingModeProps {
   song: SongItem;
   onExit: () => void;
   onEditSong: () => void;
   onChangeChunkSize?: (newSize: number) => void;
+  onSaveSong?: (updated: SongItem) => void;
 }
 
 type SequenceStrategy = 'guided' | 'window-2' | 'window-3' | 'custom-range';
@@ -50,11 +54,13 @@ export const ChainingMode: React.FC<ChainingModeProps> = ({
   onExit,
   onEditSong,
   onChangeChunkSize,
+  onSaveSong,
 }) => {
   const [granularity, setGranularity] =
     useState<ChainingGranularity>('chunk');
   const [strategy, setStrategy] = useState<SequenceStrategy>('guided');
   const [stepIndex, setStepIndex] = useState(0);
+  const [refiningPart, setRefiningPart] = useState<ParsedPart | null>(null);
   const [blankingConfig, setBlankingConfig] = useState<BlankingConfig>(() => {
     try {
       const saved = localStorage.getItem('by_heart_blanking_config_v1');
@@ -71,6 +77,8 @@ export const ChainingMode: React.FC<ChainingModeProps> = ({
     }
   });
   const [isBlankedStage, setIsBlankedStage] = useState(false);
+  const [tipCycleOffset, setTipCycleOffset] = useState(0);
+  const [isTipVisible, setIsTipVisible] = useState(true);
   const [isBlankingPopoverOpen, setIsBlankingPopoverOpen] = useState(false);
   const [slideDirection, setSlideDirection] = useState<'next' | 'prev'>('next');
   const [animKey, setAnimKey] = useState(0);
@@ -104,6 +112,32 @@ export const ChainingMode: React.FC<ChainingModeProps> = ({
       }
     };
   }, []);
+
+  // Gentle 15-second auto-cycling of motivational & practice-hygiene quotes during blanked stage
+  useEffect(() => {
+    if (!isBlankedStage || isCompletedModal) {
+      setIsTipVisible(true);
+      return;
+    }
+
+    setIsTipVisible(true);
+    let fadeTimeoutId: number | null = null;
+
+    const intervalId = window.setInterval(() => {
+      setIsTipVisible(false);
+      fadeTimeoutId = window.setTimeout(() => {
+        setTipCycleOffset((c) => c + 1);
+        setIsTipVisible(true);
+      }, 650);
+    }, 15000);
+
+    return () => {
+      window.clearInterval(intervalId);
+      if (fadeTimeoutId !== null) {
+        window.clearTimeout(fadeTimeoutId);
+      }
+    };
+  }, [isBlankedStage, isCompletedModal, stepIndex]);
 
   const handleSelectGranularity = (nextGranularity: ChainingGranularity) => {
     const isChanging = nextGranularity !== granularity;
@@ -330,7 +364,8 @@ export const ChainingMode: React.FC<ChainingModeProps> = ({
     const handleKeyDown = (e: KeyboardEvent) => {
       if (
         e.target instanceof HTMLInputElement ||
-        e.target instanceof HTMLTextAreaElement
+        e.target instanceof HTMLTextAreaElement ||
+        refiningPart !== null
       ) {
         return;
       }
@@ -365,6 +400,7 @@ export const ChainingMode: React.FC<ChainingModeProps> = ({
     isBlankingPopoverOpen,
     showWindowMenu,
     isCompletedModal,
+    refiningPart,
   ]);
 
   // Touch / Mouse Swipe & Tap handling on the buttonless stage canvas
@@ -432,6 +468,7 @@ export const ChainingMode: React.FC<ChainingModeProps> = ({
   const contentRef = useRef<HTMLDivElement>(null);
   const [scale, setScale] = useState(1);
   const [columnCount, setColumnCount] = useState(1);
+  const [underneathTopPx, setUnderneathTopPx] = useState<number | null>(null);
   const evaluatedLayoutKeyRef = useRef<string>('');
 
   const getPartWeight = useCallback(
@@ -489,10 +526,12 @@ export const ChainingMode: React.FC<ChainingModeProps> = ({
     const stageH = stageEl.clientHeight;
     const isLandscape = stageW > stageH * 1.1;
 
-    // Reserve extra breathing room (plus ~3.5% bottom page margin so bottom parts/badges never feel cramped)
+    // Reserve extra breathing room (plus space underneath when Blanking is enabled)
+    const coachingReserveY = blankingConfig.enabled ? 64 : 0;
+
     const padX = isLandscape ? 48 : 32;
     const bottomBreathingSpace = Math.max(24, Math.round(stageH * 0.035));
-    const padY = 28 + bottomBreathingSpace;
+    const padY = 28 + bottomBreathingSpace + coachingReserveY;
 
     const availW = Math.max(100, stageW - padX);
     const availH = Math.max(100, stageH - padY);
@@ -533,8 +572,20 @@ export const ChainingMode: React.FC<ChainingModeProps> = ({
     const ratioH = availH / naturalH;
     const maxScale = columnCount > 1 ? 1.05 : 1.12;
     const rawScale = Math.min(maxScale, ratioW, ratioH);
-    setScale(Math.max(0.18, Number(rawScale.toFixed(3))));
+    const finalScale = Math.max(0.18, Number(rawScale.toFixed(3)));
+    setScale(finalScale);
+
+    // Compute exact Y position right underneath the scaled shape so the quote/tip sits gracefully below it
+    const stageCenterOffsetRatio = blankingConfig.enabled ? 0.46 : 0.4875;
+    const visualBottomY =
+      stageH * stageCenterOffsetRatio + (naturalH * finalScale) / 2;
+    const clampedTop = Math.min(
+      Math.max(120, stageH - 84),
+      Math.round(visualBottomY + 10)
+    );
+    setUnderneathTopPx(clampedTop);
   }, [
+    blankingConfig.enabled,
     columnCount,
     visibleParts,
     safeStepIndex,
@@ -627,6 +678,16 @@ export const ChainingMode: React.FC<ChainingModeProps> = ({
     return splitIntoBalancedColumns(visibleParts, columnCount, getPartWeight);
   }, [columnCount, visibleParts, getPartWeight]);
 
+  const activePracticeTip = useMemo(
+    () =>
+      selectPracticeTipForStep({
+        stepIndex: safeStepIndex,
+        stepType: currentStep?.type,
+        cycleOffset: tipCycleOffset,
+      }),
+    [safeStepIndex, currentStep?.type, tipCycleOffset]
+  );
+
   const renderPartItem = (part: ParsedPart, isVeryFirstOnScreen: boolean) => {
     const isRepeatPart = part.isRepeatOfSectionIndex !== null;
     const isExpanded = Boolean(expandedRepeatParts[part.partIndex]);
@@ -669,6 +730,18 @@ export const ChainingMode: React.FC<ChainingModeProps> = ({
               )}
             </span>
             <Eye className="w-4 h-4 text-stone-400" />
+            <button
+              data-no-stage-advance
+              onClick={(e) => {
+                e.stopPropagation();
+                setRefiningPart(part);
+              }}
+              className="pencil-faded p-1.5 rounded-lg ml-0.5 hover:scale-110 active:scale-95 cursor-pointer"
+              title="Refine chunk in song editor"
+              aria-label="Refine chunk"
+            >
+              <Pencil className="w-4 h-4" />
+            </button>
           </div>
         </div>
       );
@@ -747,12 +820,24 @@ export const ChainingMode: React.FC<ChainingModeProps> = ({
         key={part.partIndex}
         className="border-l-2 border-stone-800 pl-4 py-0.5 w-max"
       >
-        {/* Section Header (shown on the first chunk of a section or when isolated) */}
-        {(part.isFirstChunkOfSection || visibleParts.length === 1) && (
+        {/* Section / Chunk Header with Refine Pencil */}
+        {part.isFirstChunkOfSection || visibleParts.length === 1 ? (
           <div className="flex items-center gap-2 mb-1.5 whitespace-nowrap">
             <span className="text-xs uppercase tracking-widest font-bold text-stone-400">
               {part.title}
             </span>
+            <button
+              data-no-stage-advance
+              onClick={(e) => {
+                e.stopPropagation();
+                setRefiningPart(part);
+              }}
+              className="pencil-faded p-1 rounded-md hover:scale-110 active:scale-95 cursor-pointer"
+              title={`Refine ${part.title}`}
+              aria-label={`Refine ${part.title}`}
+            >
+              <Pencil className="w-3.5 h-3.5" />
+            </button>
             {isRepeatPart && isExpanded && (
               <button
                 data-no-stage-advance
@@ -768,6 +853,24 @@ export const ChainingMode: React.FC<ChainingModeProps> = ({
                 Collapse ↻
               </button>
             )}
+          </div>
+        ) : (
+          <div className="flex items-center gap-2 mb-1.5 whitespace-nowrap">
+            <span className="text-[11px] uppercase tracking-wider font-semibold text-stone-500">
+              {part.title}
+            </span>
+            <button
+              data-no-stage-advance
+              onClick={(e) => {
+                e.stopPropagation();
+                setRefiningPart(part);
+              }}
+              className="pencil-faded p-1 rounded-md hover:scale-110 active:scale-95 cursor-pointer"
+              title={`Refine ${part.title}`}
+              aria-label={`Refine ${part.title}`}
+            >
+              <Pencil className="w-3.5 h-3.5" />
+            </button>
           </div>
         )}
 
@@ -1186,7 +1289,9 @@ export const ChainingMode: React.FC<ChainingModeProps> = ({
         ref={stageRef}
         onPointerDown={handleStagePointerDown}
         onPointerUp={handleStagePointerUp}
-        className="flex-1 w-full h-full overflow-hidden flex items-center justify-center pb-[2.5vh] relative cursor-pointer"
+        className={`flex-1 w-full h-full overflow-hidden flex items-center justify-center relative cursor-pointer ${
+          blankingConfig.enabled ? 'pb-[8vh]' : 'pb-[2.5vh]'
+        }`}
       >
         <div
           key={animKey}
@@ -1240,6 +1345,28 @@ export const ChainingMode: React.FC<ChainingModeProps> = ({
             )}
           </div>
         </div>
+
+        {/* Serene Italic Motivational & Self-Love Coaching Prompt Underneath the Blanked Shape */}
+        {isBlankedStage && activePracticeTip && (
+          <div
+            style={
+              underneathTopPx !== null
+                ? { top: `${underneathTopPx}px` }
+                : undefined
+            }
+            className="absolute left-0 right-0 flex justify-center px-6 pointer-events-none z-10 animate-quote-fade"
+          >
+            <p
+              className={`max-w-xl text-center font-serif italic text-stone-400/90 text-base sm:text-lg leading-relaxed tracking-wide transition-all duration-700 ease-in-out ${
+                isTipVisible
+                  ? 'opacity-100 translate-y-0'
+                  : 'opacity-0 translate-y-1.5'
+              }`}
+            >
+              {activePracticeTip.text}
+            </p>
+          </div>
+        )}
 
         {/* Subtle non-intrusive gesture hint at bottom right */}
         <div className="absolute bottom-2.5 right-4 pointer-events-none text-[11px] font-mono text-stone-600 flex items-center gap-3">
@@ -1298,6 +1425,25 @@ export const ChainingMode: React.FC<ChainingModeProps> = ({
           </div>
         )}
       </div>
+
+      {/* Quick Edit "Refine Chunk" Modal */}
+      {refiningPart && (
+        <RefineChunkModal
+          song={song}
+          targetPart={refiningPart}
+          onSave={(updated) => {
+            if (onSaveSong) {
+              onSaveSong(updated);
+            }
+            setRefiningPart(null);
+          }}
+          onOpenFullEditor={() => {
+            setRefiningPart(null);
+            onEditSong();
+          }}
+          onClose={() => setRefiningPart(null)}
+        />
+      )}
     </div>
   );
 };

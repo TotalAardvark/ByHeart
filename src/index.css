@@ -5,6 +5,7 @@
   :root[data-theme="ocean"] {
     --font-sans: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
     --font-mono: 'JetBrains Mono', ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+    --font-serif: 'Newsreader', Georgia, Cambria, 'Times New Roman', Times, serif;
 
     /* 1. Ocean Depth (#1a365d, #015a9c, #60c1e5, #a1e0ef) */
     --color-stone-950: #0f223d;
@@ -247,6 +248,10 @@
     font-family: var(--font-mono);
     font-variant-ligatures: none;
   }
+
+  .font-serif {
+    font-family: var(--font-serif);
+  }
 }
 
 .btn-primary {
@@ -296,3 +301,36 @@
 .animate-slide-prev {
   animation: slideInFromLeft 220ms cubic-bezier(0.22, 1, 0.36, 1) forwards;
 }
+
+@keyframes quoteFadeIn {
+  from {
+    opacity: 0;
+    transform: translateY(6px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.animate-quote-fade {
+  animation: quoteFadeIn 260ms cubic-bezier(0.22, 1, 0.36, 1) forwards;
+}
+
+/* Light faded pencil icon - always present in practice chunk views, dynamically adapts to active theme color */
+.pencil-faded {
+  color: var(--color-amber-400);
+  opacity: 0.4;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  transition: opacity 150ms ease, background-color 150ms ease, transform 150ms ease, color 150ms ease;
+}
+
+.pencil-faded:hover,
+.pencil-faded:focus-visible {
+  opacity: 1;
+  background-color: rgba(251, 191, 36, 0.15);
+  background-color: color-mix(in srgb, var(--color-amber-400) 18%, transparent);
+}
+

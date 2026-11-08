@@ -238,6 +238,7 @@ export const App: React.FC = () => {
             onChangeChunkSize={(newSize) =>
               handleChangeChunkSize(activeSong.id, newSize)
             }
+            onSaveSong={handleSaveEditor}
           />
         ) : activeSong.lastMode === 'scaffold' ? (
           <ScaffoldMode

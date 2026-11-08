@@ -1,0 +1,298 @@
+@import "tailwindcss";
+
+@layer base {
+  :root,
+  :root[data-theme="ocean"] {
+    --font-sans: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+    --font-mono: 'JetBrains Mono', ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+
+    /* 1. Ocean Depth (#1a365d, #015a9c, #60c1e5, #a1e0ef) */
+    --color-stone-950: #0f223d;
+    --color-stone-900: #1a365d;
+    --color-stone-800: #22477a;
+    --color-stone-700: #2f5e9e;
+    --color-stone-600: #5b8bc2;
+    --color-stone-500: #7ba8db;
+    --color-stone-400: #9ec5ed;
+    --color-stone-300: #c4e1f7;
+    --color-stone-200: #e0f2fc;
+    --color-stone-100: #f2faff;
+
+    --color-amber-500: #015a9c;
+    --color-amber-400: #60c1e5;
+    --color-amber-300: #8ad8f5;
+    --color-amber-200: #c7effc;
+
+    --color-emerald-500: #38c6d9;
+    --color-emerald-400: #60d6e6;
+    --color-emerald-300: #a1e0ef;
+    --color-emerald-200: #d4f4fc;
+
+    --color-sky-500: #015a9c;
+    --color-sky-400: #60c1e5;
+    --color-sky-300: #a1e0ef;
+
+    --color-rose-400: #ff7a8a;
+
+    --color-btn-primary: #60c1e5;
+    --color-btn-primary-hover: #82d1ef;
+    --color-on-primary: #0c1d36;
+
+    --color-btn-secondary: #a1e0ef;
+    --color-btn-secondary-hover: #bcebf7;
+    --color-on-secondary: #0c1d36;
+  }
+
+  :root[data-theme="citrus"] {
+    /* 2. Crimson Citrus (#e00201, #ffa97b, #ffeccb, #9fed72) */
+    --color-stone-950: #fff6e6;
+    --color-stone-900: #ffeccb;
+    --color-stone-800: #f6d6ab;
+    --color-stone-700: #e3b883;
+    --color-stone-600: #965634;
+    --color-stone-500: #7a4020;
+    --color-stone-400: #5e2b11;
+    --color-stone-300: #451a07;
+    --color-stone-200: #300f03;
+    --color-stone-100: #210702;
+
+    --color-amber-500: #ffa97b;
+    --color-amber-400: #e00201;
+    --color-amber-300: #b30000;
+    --color-amber-200: #870000;
+
+    --color-emerald-500: #7cd94c;
+    --color-emerald-400: #65c435;
+    --color-emerald-300: #1e6108;
+    --color-emerald-200: #144504;
+
+    --color-sky-500: #ffa97b;
+    --color-sky-400: #c44600;
+    --color-sky-300: #9c3400;
+
+    --color-rose-400: #c90000;
+
+    --color-btn-primary: #d90201;
+    --color-btn-primary-hover: #b80000;
+    --color-on-primary: #fff8ee;
+
+    --color-btn-secondary: #9fed72;
+    --color-btn-secondary-hover: #8be05a;
+    --color-on-secondary: #142e05;
+  }
+
+  :root[data-theme="sunset"] {
+    /* 3. Sunset Dusk (#421454, #802c62, #ff5c42, #ffd649) */
+    --color-stone-950: #2a0b36;
+    --color-stone-900: #421454;
+    --color-stone-800: #5e1e70;
+    --color-stone-700: #802c62;
+    --color-stone-600: #a85489;
+    --color-stone-500: #c278a5;
+    --color-stone-400: #dba1c3;
+    --color-stone-300: #f0cfe1;
+    --color-stone-200: #fae8f2;
+    --color-stone-100: #fff6fa;
+
+    --color-amber-500: #ff5c42;
+    --color-amber-400: #ffd649;
+    --color-amber-300: #ffe175;
+    --color-amber-200: #ffefb3;
+
+    --color-emerald-500: #ff5c42;
+    --color-emerald-400: #ff7661;
+    --color-emerald-300: #ff9b8a;
+    --color-emerald-200: #ffc4b8;
+
+    --color-sky-500: #ff5c42;
+    --color-sky-400: #ff7b66;
+    --color-sky-300: #ffa194;
+
+    --color-rose-400: #ff7b89;
+
+    --color-btn-primary: #ffd649;
+    --color-btn-primary-hover: #ffe070;
+    --color-on-primary: #260830;
+
+    --color-btn-secondary: #ff5c42;
+    --color-btn-secondary-hover: #ff745e;
+    --color-on-secondary: #21050c;
+  }
+
+  :root[data-theme="velvet"] {
+    /* 4. Midnight Velvet (#290044, #500071, #8a2a78, #eee3b1) */
+    --color-stone-950: #1a002c;
+    --color-stone-900: #290044;
+    --color-stone-800: #430063;
+    --color-stone-700: #610c82;
+    --color-stone-600: #8a2a78;
+    --color-stone-500: #ab5c9c;
+    --color-stone-400: #ca8ebe;
+    --color-stone-300: #e6c3de;
+    --color-stone-200: #f5e6f1;
+    --color-stone-100: #fdf9ec;
+
+    --color-amber-500: #8a2a78;
+    --color-amber-400: #eee3b1;
+    --color-amber-300: #f5ecc4;
+    --color-amber-200: #faf5de;
+
+    --color-emerald-500: #d47ec4;
+    --color-emerald-400: #e096d2;
+    --color-emerald-300: #ebb2e0;
+    --color-emerald-200: #f7d7f1;
+
+    --color-sky-500: #8a2a78;
+    --color-sky-400: #d685c6;
+    --color-sky-300: #f0b5e4;
+
+    --color-rose-400: #ff80a6;
+
+    --color-btn-primary: #eee3b1;
+    --color-btn-primary-hover: #f5ecc6;
+    --color-on-primary: #1a002c;
+
+    --color-btn-secondary: #d47ec4;
+    --color-btn-secondary-hover: #e094d2;
+    --color-on-secondary: #1a002c;
+  }
+
+  :root[data-theme="sorbet"] {
+    /* 5. Pastel Sorbet (#9fa0ff, #d6e8e6, #fff3e3, #ff7071) */
+    --color-stone-950: #fff7ed;
+    --color-stone-900: #fff3e3;
+    --color-stone-800: #d6e8e6;
+    --color-stone-700: #b5d1ce;
+    --color-stone-600: #62658c;
+    --color-stone-500: #4d5075;
+    --color-stone-400: #3a3c61;
+    --color-stone-300: #292b4a;
+    --color-stone-200: #1b1d38;
+    --color-stone-100: #101226;
+
+    --color-amber-500: #ff7071;
+    --color-amber-400: #ff7071;
+    --color-amber-300: #b52224;
+    --color-amber-200: #8c1416;
+
+    --color-emerald-500: #9fa0ff;
+    --color-emerald-400: #8889fa;
+    --color-emerald-300: #3638a8;
+    --color-emerald-200: #232580;
+
+    --color-sky-500: #9fa0ff;
+    --color-sky-400: #5254d9;
+    --color-sky-300: #3b3dc4;
+
+    --color-rose-400: #d62828;
+
+    --color-btn-primary: #ff7071;
+    --color-btn-primary-hover: #ff5758;
+    --color-on-primary: #1f090b;
+
+    --color-btn-secondary: #9fa0ff;
+    --color-btn-secondary-hover: #888afa;
+    --color-on-secondary: #10122b;
+  }
+
+  :root[data-theme="canyon"] {
+    /* 6. Terracotta Canyon (#feead3, #bfe7ea, #e89b5b, #d46743) */
+    --color-stone-950: #fff4e8;
+    --color-stone-900: #feead3;
+    --color-stone-800: #f2d3b3;
+    --color-stone-700: #dfb58c;
+    --color-stone-600: #8a543b;
+    --color-stone-500: #704029;
+    --color-stone-400: #572e1b;
+    --color-stone-300: #401f0f;
+    --color-stone-200: #2c1307;
+    --color-stone-100: #1c0a02;
+
+    --color-amber-500: #e89b5b;
+    --color-amber-400: #d46743;
+    --color-amber-300: #9e3616;
+    --color-amber-200: #7a2409;
+
+    --color-emerald-500: #8fd2d8;
+    --color-emerald-400: #75c3ca;
+    --color-emerald-300: #0f575c;
+    --color-emerald-200: #083d42;
+
+    --color-sky-500: #bfe7ea;
+    --color-sky-400: #196e75;
+    --color-sky-300: #0f585e;
+
+    --color-rose-400: #b82914;
+
+    --color-btn-primary: #e89b5b;
+    --color-btn-primary-hover: #de8943;
+    --color-on-primary: #1c0802;
+
+    --color-btn-secondary: #bfe7ea;
+    --color-btn-secondary-hover: #a6dce0;
+    --color-on-secondary: #072a2e;
+  }
+
+  body {
+    font-family: var(--font-sans);
+    transition: background-color 200ms ease, color 200ms ease;
+    padding-top: env(safe-area-inset-top);
+    padding-bottom: env(safe-area-inset-bottom);
+    padding-left: env(safe-area-inset-left);
+    padding-right: env(safe-area-inset-right);
+    -webkit-tap-highlight-color: transparent;
+  }
+
+  code, pre, .font-mono {
+    font-family: var(--font-mono);
+    font-variant-ligatures: none;
+  }
+}
+
+.btn-primary {
+  background-color: var(--color-btn-primary);
+  color: var(--color-on-primary);
+}
+
+.btn-primary:hover {
+  background-color: var(--color-btn-primary-hover);
+}
+
+.btn-secondary {
+  background-color: var(--color-btn-secondary);
+  color: var(--color-on-secondary);
+}
+
+.btn-secondary:hover {
+  background-color: var(--color-btn-secondary-hover);
+}
+
+@keyframes slideInFromRight {
+  from {
+    opacity: 0;
+    transform: translateX(36px) scale(0.985);
+  }
+  to {
+    opacity: 1;
+    transform: translateX(0) scale(1);
+  }
+}
+
+@keyframes slideInFromLeft {
+  from {
+    opacity: 0;
+    transform: translateX(-36px) scale(0.985);
+  }
+  to {
+    opacity: 1;
+    transform: translateX(0) scale(1);
+  }
+}
+
+.animate-slide-next {
+  animation: slideInFromRight 220ms cubic-bezier(0.22, 1, 0.36, 1) forwards;
+}
+
+.animate-slide-prev {
+  animation: slideInFromLeft 220ms cubic-bezier(0.22, 1, 0.36, 1) forwards;
+}

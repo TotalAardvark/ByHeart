@@ -1,14 +1,39 @@
 import { SongItem } from '../types';
 import { SAMPLE_SONGS } from './sampleSongs';
 
-const STORAGE_KEY = 'by_heart_songs_v1';
+const STORAGE_KEY = 'by_heart_songs_v2';
+const LEGACY_STORAGE_KEY = 'by_heart_songs_v1';
+const BUILTIN_SAMPLE_IDS = new Set([
+  'song-rotterdam',
+  'song-shallow',
+  'song-knockin',
+  'text-ozymandias',
+]);
 
 export function loadSongs(): SongItem[] {
   try {
     const raw = localStorage.getItem(STORAGE_KEY);
     if (!raw) {
-      localStorage.setItem(STORAGE_KEY, JSON.stringify(SAMPLE_SONGS));
-      return SAMPLE_SONGS;
+      // Preserve any custom user-created songs from v1 when upgrading to v2 sample repertoire
+      let migratedSongs: SongItem[] = SAMPLE_SONGS;
+      const legacyRaw = localStorage.getItem(LEGACY_STORAGE_KEY);
+      if (legacyRaw) {
+        try {
+          const legacyParsed = JSON.parse(legacyRaw);
+          if (Array.isArray(legacyParsed)) {
+            const customUserSongs = legacyParsed.filter(
+              (s: SongItem) => s && s.id && !BUILTIN_SAMPLE_IDS.has(s.id)
+            );
+            if (customUserSongs.length > 0) {
+              migratedSongs = [...customUserSongs, ...SAMPLE_SONGS];
+            }
+          }
+        } catch {
+          // Ignore malformed legacy storage
+        }
+      }
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(migratedSongs));
+      return migratedSongs;
     }
     const parsed = JSON.parse(raw);
     if (!Array.isArray(parsed) || parsed.length === 0) {

@@ -833,10 +833,12 @@ export const ChainingMode: React.FC<ChainingModeProps> = ({
                   className={`whitespace-pre text-lg sm:text-xl ${
                     isTightTabLine ? 'leading-tight' : 'leading-snug'
                   } tracking-tight ${
-                    blankLyrics ? 'text-stone-800' : 'text-stone-100'
+                    (line.isTabLine ? blankChords : blankLyrics)
+                      ? 'text-stone-800'
+                      : 'text-stone-100'
                   }`}
                 >
-                  {blankLyrics
+                  {(line.isTabLine ? blankChords : blankLyrics)
                     ? '─'.repeat(line.lyric.length)
                     : line.lyric}
                 </div>

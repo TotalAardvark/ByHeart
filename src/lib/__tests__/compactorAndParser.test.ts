@@ -1,12 +1,19 @@
 import { describe, expect, it } from 'vitest';
 import { compactChordSheet } from '../compactor';
-import { isChordToken, simplifyChordVoicing } from '../chordUtils';
+import {
+  appendCapoToShortName,
+  extractCapoLabel,
+  isChordToken,
+  isRhythmCountOrTupletLine,
+  simplifyChordVoicing,
+} from '../chordUtils';
 import { parseSongBody } from '../parser';
 import { parseChordSheetFromHtml } from '../urlScraper';
 import { buildGuidedChainSteps } from '../chaining';
 import {
   COMPACTED_ROTTERDAM_BODY,
   RAW_ROTTERDAM_UG_SAMPLE,
+  RAW_SHALLOW_UG_SAMPLE,
 } from '../sampleSongs';
 import { THEME_PALETTES, getThemePalette } from '../themes';
 import {
@@ -60,6 +67,59 @@ Fourth line finishes the cycle`;
 
     const compacted = compactChordSheet(ugWithOmittedBoundaryChord);
     expect(compacted).toContain('1. Verse 1\n[ C - G - Am - C ]\nFirst line of the verse here\nSecond line omits the leading C chord');
+  });
+
+  it('compacts Shallow with 2-line couplet chord loops [ Em7 - D/F# - G | C - G - D ], preserves leading [ Em7 - D/F# - G ] vamp, silences preamble ((...)), strips rhythm counts, and wraps in-song TABs in {...}', () => {
+    const compactedDefault = compactChordSheet(RAW_SHALLOW_UG_SAMPLE);
+
+    // 1. Silences preamble metadata & chord voicing glossary in (( ... ))
+    expect(compactedDefault).toContain('((\nStandard tuning.\nCapo 2');
+    expect(compactedDefault).toContain('E|-0----2----3------------------------0--------------|\n))');
+
+    // 2. Strips rhythm subdivision lines ("1 + 2 + 3 + 4 + etc.", "1 e + a...", "\ 3 /")
+    expect(compactedDefault).not.toContain('1 + 2 + 3 + 4 +');
+    expect(compactedDefault).not.toContain('1 e + a');
+    expect(compactedDefault).not.toContain('\\ 3 /');
+
+    // 3. Wraps in-song Intro TAB blocks in { ... } by default (when simplifyInlineTabs is false)
+    expect(compactedDefault).toContain('1. Intro\n{\n   Em7             D/F#             G');
+
+    // 4. Preserves the standalone [ Em7 - D/F# - G ] intro vamp before Verse 1 AND detects the 2-line couplet loop [ Em7 - D/F# - G | C - G - D ]
+    expect(compactedDefault).toContain(
+      '2. Verse 1\n[ Em7 - D/F# - G ]\n[ Em7 - D/F# - G | C - G - D ]\n  Tell me something, girl\n  Are you happy in this modern world?'
+    );
+
+    // 5. Detects the 2-line couplet loop [ Am - D/F# | G - D - Em ] on the Chorus and collapses the final repeated Chorus/Post-Chorus
+    expect(compactedDefault).toContain(
+      "6. Chorus\n[ Am - D/F# | G - D - Em ]\nI'm off the deep end, watch as I dive in"
+    );
+    expect(compactedDefault).toContain('9. Chorus\n\n10. Post-Chorus');
+
+    // 6. When simplifyInlineTabs is true, collapses the Intro TAB into bracketed chord progressions instead of { ... }
+    const compactedSimplifiedTabs = compactChordSheet(RAW_SHALLOW_UG_SAMPLE, {
+      simplifyVoicings: false,
+      suppressConsecutiveDuplicateChords: true,
+      collapseRepeatedSections: true,
+      simplifyInlineTabs: true,
+      silencePreambleAndVoicings: true,
+    });
+    expect(compactedSimplifiedTabs).not.toContain('\n{\n');
+    expect(compactedSimplifiedTabs).toContain(
+      '1. Intro\n[ Em7 - D/F# - G ]\n[ C - G - D ]'
+    );
+  });
+
+  it('extracts capo info and appends (capo N) to shorthand song names, and recognizes rhythm count lines', () => {
+    expect(extractCapoLabel(RAW_SHALLOW_UG_SAMPLE)).toBe('capo 2');
+    expect(extractCapoLabel('No capo\n[Verse 1]')).toBeNull();
+    expect(extractCapoLabel('Capo on 4th fret')).toBe('capo 4');
+    expect(appendCapoToShortName('Shallow', 'capo 2')).toBe('Shallow (capo 2)');
+    expect(appendCapoToShortName('Shallow (capo 1)', 'capo 2')).toBe('Shallow (capo 2)');
+
+    expect(isRhythmCountOrTupletLine('  1 + 2 + 3 + 4 + etc.')).toBe(true);
+    expect(isRhythmCountOrTupletLine('1 e + a 2 e + a 3 e + a 4 e + a')).toBe(true);
+    expect(isRhythmCountOrTupletLine('        \\ 3 /')).toBe(true);
+    expect(isRhythmCountOrTupletLine('Tell me something girl')).toBe(false);
   });
 });
 
@@ -147,6 +207,70 @@ Line 8
       2: 'yellow',
       3: 'yellow',
     });
+  });
+
+  it('ignores (( ... )) silenced blocks, locks { ... } blocks as atomic chunks regardless of chunkSize, and separates preLineProgressions from introducedProgression', () => {
+    const customSong = `Shallow - Lady Gaga & Bradley Cooper
+
+((
+Standard tuning.
+Capo 2
+   Em7  D/F#  G
+e|(3)--(2)--(3)|
+))
+
+1. Intro
+{
+   Em7  D/F#  G
+e|(3)--(2)--(3)--|
+B|-3----3----3---|
+G|-0----2----0---|
+D|-2----0----0---|
+A|-2---(0)--(2)--|
+E|-0----2----3---|
+}
+{
+   C    G     D
+e|-0----3----2---|
+B|-1----3----3---|
+G|-0----0----2---|
+D|-2----0----0---|
+A|-3-------------|
+E|------3--------|
+}
+
+2. Verse 1
+[ Em7 - D/F# - G ]
+[ Em7 - D/F# - G | C - G - D ]
+Tell me something, girl
+Are you happy in this modern world?
+Or do you need more?
+Is there something else you're searchin' for?
+`;
+
+    // Even with chunkSize = 2, each 6-line { ... } TAB block in 1. Intro stays intact as 1 atomic chunk!
+    const parsed = parseSongBody(customSong, 2);
+
+    // (( ... )) was completely ignored
+    expect(parsed.sections).toHaveLength(2);
+    expect(parsed.sections[0].fullHeader).toBe('1. Intro');
+    expect(parsed.sections[0].lines).toHaveLength(12);
+    expect(parsed.sections[0].lines.every((l) => l.isTabLine)).toBe(true);
+
+    // 1. Intro has 2 { ... } blocks -> 2 chunks (6 lines each), NOT 6 chunks of 2 lines!
+    const introChunks = parsed.chunkParts.filter((p) => p.sectionIndex === 0);
+    expect(introChunks).toHaveLength(2);
+    expect(introChunks[0].lines).toHaveLength(6);
+    expect(introChunks[0].lines[0].chordOverLine).toContain('Em7');
+    expect(introChunks[1].lines).toHaveLength(6);
+    expect(introChunks[1].lines[0].chordOverLine).toContain('C');
+
+    // 2. Verse 1 has [ Em7 - D/F# - G ] in preLineProgressions and [ Em7 - D/F# - G | C - G - D ] in introducedProgression
+    const verse1 = parsed.sections[1];
+    expect(verse1.lines[0].preLineProgressions).toEqual(['Em7 - D/F# - G']);
+    expect(verse1.lines[0].introducedProgression).toBe(
+      'Em7 - D/F# - G | C - G - D'
+    );
   });
 });
 

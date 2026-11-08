@@ -553,7 +553,11 @@ export const SongEditorModal: React.FC<SongEditorModalProps> = ({
                     onClick={() => {
                       const demoWithHeader = RAW_SHALLOW_UG_SAMPLE;
                       setRawSource(demoWithHeader);
-                      requestRunCompactor(demoWithHeader, compactorOptions);
+                      requestRunCompactor(
+                        demoWithHeader,
+                        compactorOptions,
+                        'Shallow'
+                      );
                     }}
                     className="h-[26px] min-w-[78px] text-[11px] font-normal px-2.5 py-1 rounded-md bg-stone-800/80 hover:bg-stone-700 text-stone-400 hover:text-stone-200 border border-stone-700/70 flex items-center justify-center gap-1 transition cursor-pointer whitespace-nowrap"
                   >
@@ -600,9 +604,9 @@ export const SongEditorModal: React.FC<SongEditorModalProps> = ({
                     className="accent-amber-400 rounded w-3.5 h-3.5 shrink-0"
                   />
                   <span>
-                    Simplify in-song TABs to chord loops{' '}
+                    Simplify in-line tabs{' '}
                     <span className="text-stone-400 font-mono text-[11px]">
-                      (otherwise lock TAB blocks in &#123; ... &#125;.)
+                      (collapse in-song tabs to [chords], or wrap in &#123;...&#125; if unchecked.)
                     </span>
                   </span>
                 </label>
@@ -614,9 +618,9 @@ export const SongEditorModal: React.FC<SongEditorModalProps> = ({
                     className="accent-amber-400 rounded w-3.5 h-3.5 shrink-0"
                   />
                   <span>
-                    Silence preamble &amp; chord diagrams{' '}
+                    Silence preamble notes and chord voicing diagrams{' '}
                     <span className="text-stone-400 font-mono text-[11px]">
-                      (wrap tuning/voicings in (( ... )) during practice.)
+                      (wrap in ((...)) so they stay hidden during practice.)
                     </span>
                   </span>
                 </label>
@@ -720,14 +724,26 @@ export const SongEditorModal: React.FC<SongEditorModalProps> = ({
                     the same label.
                   </li>
                   <li>
-                    • <code className="text-amber-300">[ C - F ]</code>: Create a
-                    repeating chord loop for that section and every subsequent
-                    section until you create a new chord loop.
+                    • <code className="text-amber-300">[ C - F ]</code> or{' '}
+                    <code className="text-amber-300">[ Em7 - D/F# - G | C - G - D ]</code>: Create
+                    a 1-line or 2-line (<code className="text-amber-300">|</code>) repeating
+                    chord loop for that section and every subsequent section
+                    until changed.
                   </li>
                   <li>
                     • <code className="text-sky-300">G... E...</code>: Add chords
                     above lyrics in a new line if the pattern changes (does not
                     override Repeating Chord Loops).
+                  </li>
+                  <li>
+                    • <code className="text-amber-300">&#123; ... &#125;</code>: Wrap
+                    multi-line guitar TABs or custom stanzas inside curly braces
+                    to lock them together as a single chunk.
+                  </li>
+                  <li>
+                    • <code className="text-stone-300">(( ... ))</code>: Silence
+                    preamble notes, chord voicing diagrams, or comments so they
+                    stay in the editor without showing during practice.
                   </li>
                   <li>
                     • Click{' '}

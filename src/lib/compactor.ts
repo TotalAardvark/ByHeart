@@ -577,6 +577,7 @@ export function compactChordSheet(
       // If this chord line sat strictly above an ASCII TAB diagram before any named section started
       // (and the sheet has explicit section headers below), it's a chord-voicing glossary diagram
       if (
+        shouldSilencePreamble &&
         pendingChordAttachedToTab &&
         !hasExplicitHeaders &&
         currentBlock.headerName === null &&
@@ -666,6 +667,7 @@ export function compactChordSheet(
           }
           currentBlock = { headerName: null, pairs: [] };
         } else if (currentBlock.pairs.length > 0) {
+          currentBlock.headerName = 'Preamble';
           rawBlocks.push(currentBlock);
         }
       } else if (

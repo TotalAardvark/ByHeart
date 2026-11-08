@@ -37,10 +37,15 @@ function buildFlashcardsForSong(song: SongItem): SongFlashcard[] {
     }
 
     const prevPart = idx > 0 ? parsed.chunkParts[idx - 1] : null;
+    const prevIsTabChunk = Boolean(
+      prevPart && prevPart.lines.some((l) => l.isTabLine)
+    );
     const prevLastLine =
-      prevPart && prevPart.lines.length > 0
+      prevPart && prevPart.lines.length > 0 && !prevIsTabChunk
         ? prevPart.lines[prevPart.lines.length - 1].lyric
         : undefined;
+
+    const isTabChunk = part.lines.some((l) => l.isTabLine);
 
     const activeProg =
       part.lines[0]?.introducedProgression ||
@@ -52,19 +57,23 @@ function buildFlashcardsForSong(song: SongItem): SongFlashcard[] {
       id: `entry-${part.partIndex}`,
       badge: `Entry Trigger • ${part.pillLabel}`,
       promptTitle: part.title,
-      precedingCue: prevLastLine
+      precedingCue: prevIsTabChunk
+        ? `After: ${prevPart!.title} (Guitar TAB)`
+        : prevLastLine
         ? `After: “…${prevLastLine}”`
         : 'Start of Song / Piece',
-      promptQuestion: activeProg
+      promptQuestion: isTabChunk
+        ? 'Recall the guitar TAB / chord pattern for this part:'
+        : activeProg
         ? 'Recall the chord pattern, turnaround chords & lyrics for this part:'
         : 'Recall the lines for this part:',
       answerProgression: activeProg,
       answerLines: part.lines,
     });
 
-    // 2. If the chunk has >= 3 lines, also create a Couple-Completion / Turnaround card
+    // 2. If the chunk has >= 3 lyric lines (and is not a guitar TAB block), also create a Couple-Completion / Turnaround card
     //    (Prompting with the opening 1-2 lines and testing the closing lines + turnaround chords)
-    if (part.lines.length >= 3) {
+    if (part.lines.length >= 3 && !isTabChunk) {
       const splitIdx = Math.ceil(part.lines.length / 2);
       const cueLines = part.lines
         .slice(0, splitIdx)
@@ -257,6 +266,16 @@ export const FlashcardMode: React.FC<FlashcardModeProps> = ({
               {/* Answer Area (Revealed on Flip) */}
               {isFlipped ? (
                 <div className="mt-6 pt-6 border-t border-stone-800 font-mono space-y-2 animate-slide-next overflow-x-auto">
+                  {currentCard.answerLines[0]?.preLineProgressions?.map(
+                    (preProg, pIdx) => (
+                      <div key={`top-pre-${pIdx}`} className="mb-1.5">
+                        <span className="inline-block whitespace-pre px-3 py-1 rounded-lg bg-amber-400/15 border border-amber-400/40 text-amber-300 font-bold text-base">
+                          [ {preProg} ]
+                        </span>
+                      </div>
+                    )
+                  )}
+
                   {currentCard.answerProgression && (
                     <div className="mb-2">
                       {currentCard.answerProgression.includes('|') &&
@@ -282,7 +301,7 @@ export const FlashcardMode: React.FC<FlashcardModeProps> = ({
                     </div>
                   )}
 
-                  {currentCard.answerLines.map((line) => {
+                  {currentCard.answerLines.map((line, lIdx) => {
                     const isTightTabLine =
                       Boolean(line.isTabLine) ||
                       line.lockedChunkGroupId !== undefined;
@@ -291,7 +310,8 @@ export const FlashcardMode: React.FC<FlashcardModeProps> = ({
                         key={line.globalLineIndex}
                         className={isTightTabLine ? '!mt-0.5' : undefined}
                       >
-                        {line.preLineProgressions &&
+                        {lIdx > 0 &&
+                          line.preLineProgressions &&
                           line.preLineProgressions.map((preProg, pIdx) => (
                             <div key={pIdx} className="mb-1.5">
                               <span className="inline-block whitespace-pre px-3 py-0.5 rounded-lg bg-amber-400/15 border border-amber-400/40 text-amber-300 font-bold text-base">

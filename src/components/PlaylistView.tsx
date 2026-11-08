@@ -816,12 +816,13 @@ export const PlaylistView: React.FC<PlaylistViewProps> = ({
 
               <div className="bg-stone-950/60 border border-stone-800/70 rounded-xl p-3.5">
                 <div className="font-semibold text-stone-200 mb-1">
-                  7. Chord Loops (<code className="text-amber-300">[ C - F ]</code>)
+                  7. Chord Loops (<code className="text-amber-300">[ C - F ]</code> &amp; <code className="text-amber-300">|</code>)
                 </div>
                 <p>
-                  There&apos;s no need to write out every chord if a song has the
-                  same chords the entire time. Chord loops can be written once
-                  and attach to every following section until you change it.
+                  Write repeating chord loops once (single-line{' '}
+                  <code className="text-amber-300">[ C - F ]</code> or 2-line couplets{' '}
+                  <code className="text-amber-300">[ Em7 - D/F# - G | C - G - D ]</code>)
+                  and they attach to every following section until changed.
                 </p>
               </div>
 
@@ -833,6 +834,30 @@ export const PlaylistView: React.FC<PlaylistViewProps> = ({
                   If there&apos;s a short break in the pattern, you can add a new
                   line and insert chords above lyrics without affecting the
                   active chord loop.
+                </p>
+              </div>
+
+              <div className="bg-stone-950/60 border border-stone-800/70 rounded-xl p-3.5 sm:col-span-2 lg:col-span-2">
+                <div className="font-semibold text-stone-200 mb-1">
+                  9. Locked Chunks &amp; Guitar TABs (<code className="text-amber-300">&#123; ... &#125;</code>)
+                </div>
+                <p>
+                  Wrap multi-line guitar TABs or custom stanzas inside{' '}
+                  <code className="text-amber-300">&#123; ... &#125;</code> so all
+                  lines inside stay locked together as a single indivisible chunk
+                  (automatically added when keeping in-song TABs).
+                </p>
+              </div>
+
+              <div className="bg-stone-950/60 border border-stone-800/70 rounded-xl p-3.5 sm:col-span-2 lg:col-span-2">
+                <div className="font-semibold text-stone-200 mb-1">
+                  10. Silenced Reference Notes (<code className="text-stone-300">(( ... ))</code>)
+                </div>
+                <p>
+                  Preamble tuning notes and chord voicing diagrams are wrapped in{' '}
+                  <code className="text-stone-300">(( ... ))</code> by the
+                  compactor so they stay saved in your editor for reference
+                  without cluttering the practice stage.
                 </p>
               </div>
             </div>

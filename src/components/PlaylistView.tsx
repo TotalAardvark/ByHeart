@@ -14,6 +14,7 @@ import {
   Sparkles,
   Palette,
   X,
+  Cloud,
 } from 'lucide-react';
 import { PracticeMode, SongItem } from '../types';
 import { parseSongBody } from '../lib/parser';
@@ -22,12 +23,14 @@ import {
   ThemeId,
   getThemePalette,
 } from '../lib/themes';
+import { ActiveProfile } from '../lib/cloudSync';
 import { ChunkSizePopover } from './ChunkSizePopover';
 import { SectionOutlinePopover } from './SectionOutlinePopover';
 
 interface PlaylistViewProps {
   songs: SongItem[];
   themeId: ThemeId;
+  activeProfile: ActiveProfile | null;
   onChangeTheme: (id: ThemeId) => void;
   onRenameSong: (id: string, newShortName: string) => void;
   onChangeMode: (id: string, mode: PracticeMode) => void;
@@ -37,6 +40,7 @@ interface PlaylistViewProps {
   onAddSong: () => void;
   onExportJson: () => void;
   onImportJson: (songs: SongItem[]) => void;
+  onOpenCloudModal: () => void;
 }
 
 export const MODE_META: Record<
@@ -78,6 +82,7 @@ export const MODE_META: Record<
 export const PlaylistView: React.FC<PlaylistViewProps> = ({
   songs,
   themeId,
+  activeProfile,
   onChangeTheme,
   onRenameSong,
   onChangeMode,
@@ -87,6 +92,7 @@ export const PlaylistView: React.FC<PlaylistViewProps> = ({
   onAddSong,
   onExportJson,
   onImportJson,
+  onOpenCloudModal,
 }) => {
   const [editingNameId, setEditingNameId] = useState<string | null>(null);
   const [nameDraft, setNameDraft] = useState('');
@@ -247,16 +253,45 @@ export const PlaylistView: React.FC<PlaylistViewProps> = ({
               <span>Add Song / Text</span>
             </button>
 
-            {/* 2. COMBINED IMPORT / EXPORT MODAL BUTTON */}
+            {/* 2. BACKUP & CLOUD SYNC BUTTON (Faded grey cloud when disconnected, active theme color when connected) */}
             <button
               onClick={() => setIsBackupModalOpen(true)}
-              title="Import or Export library JSON"
-              aria-label="Import or Export library JSON"
-              className="px-3 py-2 rounded-lg text-xs font-medium bg-stone-900 hover:bg-stone-800 text-stone-300 border border-stone-800 flex items-center gap-1 transition cursor-pointer"
+              title={
+                activeProfile
+                  ? `Cloud Sync Active: @${activeProfile.displayName} (Click for Library Backup & Profiles)`
+                  : 'Library Backup & Cloud Sync'
+              }
+              aria-label="Open library backup and cloud sync options"
+              style={
+                activeProfile
+                  ? {
+                      borderColor: activeTheme.logo.badgeBorder,
+                      boxShadow: `0 0 12px -2px ${activeTheme.logo.badgeBorder}40`,
+                    }
+                  : undefined
+              }
+              className={`px-3 py-2 rounded-lg text-xs font-medium bg-stone-900 hover:bg-stone-800 border flex items-center gap-1.5 transition cursor-pointer ${
+                activeProfile ? '' : 'text-stone-400 border-stone-800'
+              }`}
             >
-              <Download className="w-3.5 h-3.5" />
-              <span className="text-stone-500 font-mono text-xs leading-none">/</span>
-              <Upload className="w-3.5 h-3.5" />
+              <Cloud
+                className="w-4 h-4 transition-colors"
+                style={
+                  activeProfile
+                    ? { color: activeTheme.logo.heartStroke }
+                    : { color: '#78716c' }
+                }
+              />
+              {activeProfile ? (
+                <span
+                  className="hidden sm:inline font-mono text-[11px] font-semibold truncate max-w-[120px]"
+                  style={{ color: activeTheme.logo.heartStroke }}
+                >
+                  @{activeProfile.displayName}
+                </span>
+              ) : (
+                <span className="hidden sm:inline text-stone-400">Sync</span>
+              )}
             </button>
             <input
               ref={fileInputRef}
@@ -357,6 +392,35 @@ export const PlaylistView: React.FC<PlaylistViewProps> = ({
                   </div>
                   <p className="text-[11px] text-stone-400 mt-0.5 leading-snug">
                     Download your current songs and settings as a <code className="text-stone-300">.json</code> backup file.
+                  </p>
+                </div>
+              </button>
+
+              {/* 3. CLOUD SYNC & PROFILES OPTION */}
+              <button
+                type="button"
+                onClick={() => {
+                  setIsBackupModalOpen(false);
+                  onOpenCloudModal();
+                }}
+                className="w-full text-left p-3.5 rounded-xl bg-stone-950/70 hover:bg-stone-800/80 border border-stone-800 hover:border-sky-400/50 transition cursor-pointer flex items-start gap-3"
+              >
+                <div className="p-2 rounded-lg bg-sky-400/15 text-sky-300 border border-sky-400/30 shrink-0 mt-0.5">
+                  <Cloud className="w-4 h-4" />
+                </div>
+                <div className="flex-1 min-w-0">
+                  <div className="text-xs sm:text-sm font-semibold text-stone-100 flex items-center justify-between">
+                    <span>Cloud Sync &amp; Profiles</span>
+                    {activeProfile && (
+                      <span className="text-[10px] font-mono px-1.5 py-0.2 rounded bg-emerald-400/10 text-emerald-300 border border-emerald-400/30">
+                        Connected
+                      </span>
+                    )}
+                  </div>
+                  <p className="text-[11px] text-stone-400 mt-0.5 leading-snug">
+                    {activeProfile
+                      ? `Active profile @${activeProfile.displayName}. Real-time auto-sync enabled.`
+                      : 'Sync repertoire and color themes across devices with a username profile.'}
                   </p>
                 </div>
               </button>

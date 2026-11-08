@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { PracticeMode, SongItem } from './types';
 import { exportLibraryJson, loadSongs, saveSongs } from './lib/storage';
 import {
@@ -7,11 +7,19 @@ import {
   loadThemeId,
   saveThemeId,
 } from './lib/themes';
+import {
+  ActiveProfile,
+  loadActiveProfile,
+  saveActiveProfile,
+  syncProfileToCloud,
+  subscribeToCloudProfile,
+} from './lib/cloudSync';
 import { PlaylistView } from './components/PlaylistView';
 import { SongEditorModal } from './components/SongEditorModal';
 import { ChainingMode } from './components/ChainingMode';
 import { ScaffoldMode } from './components/ScaffoldMode';
 import { FlashcardMode } from './components/FlashcardMode';
+import { CloudProfileModal } from './components/CloudProfileModal';
 
 export const App: React.FC = () => {
   const [songs, setSongs] = useState<SongItem[]>(() => loadSongs());
@@ -20,11 +28,18 @@ export const App: React.FC = () => {
     applyThemeToDocument(initial);
     return initial;
   });
+  const [activeProfile, setActiveProfile] = useState<ActiveProfile | null>(() => loadActiveProfile());
+  const [isCloudModalOpen, setIsCloudModalOpen] = useState(false);
+  const [isSyncing, setIsSyncing] = useState(false);
+  const [lastSyncedAt, setLastSyncedAt] = useState<number | undefined>(() => activeProfile?.lastSyncedAt);
+
   const [activeSongId, setActiveSongId] = useState<string | null>(null);
   const [editingSong, setEditingSong] = useState<{
     song: SongItem;
     isNew: boolean;
   } | null>(null);
+
+  const isRemoteUpdateRef = useRef(false);
 
   useEffect(() => {
     saveSongs(songs);
@@ -34,6 +49,100 @@ export const App: React.FC = () => {
     applyThemeToDocument(themeId);
     saveThemeId(themeId);
   }, [themeId]);
+
+  // Real-time Cloud Subscription: listen to remote profile changes
+  useEffect(() => {
+    if (!activeProfile) return;
+
+    const unsubscribe = subscribeToCloudProfile(activeProfile.id, (remoteData) => {
+      if (!remoteData) return;
+
+      // Only update local state if remote data has newer or different songs/theme
+      isRemoteUpdateRef.current = true;
+      if (Array.isArray(remoteData.songs)) {
+        setSongs(remoteData.songs);
+      }
+      if (remoteData.themeId) {
+        setThemeId(remoteData.themeId);
+      }
+      if (remoteData.updatedAt) {
+        setLastSyncedAt(remoteData.updatedAt);
+      }
+    });
+
+    return () => {
+      unsubscribe();
+    };
+  }, [activeProfile?.id]);
+
+  // Real-time Cloud Auto-Sync: automatically pushes local song or theme edits to cloud
+  useEffect(() => {
+    if (!activeProfile) return;
+
+    // Skip pushing back if the state update came directly from a remote snapshot
+    if (isRemoteUpdateRef.current) {
+      isRemoteUpdateRef.current = false;
+      return;
+    }
+
+    const timer = setTimeout(async () => {
+      try {
+        setIsSyncing(true);
+        const syncedTime = await syncProfileToCloud(
+          activeProfile.id,
+          activeProfile.displayName,
+          songs,
+          themeId,
+          activeProfile.authProvider
+        );
+        setLastSyncedAt(syncedTime);
+      } catch (err) {
+        console.error('Cloud auto-sync error:', err);
+      } finally {
+        setIsSyncing(false);
+      }
+    }, 700);
+
+    return () => clearTimeout(timer);
+  }, [songs, themeId, activeProfile]);
+
+  const handleProfileActivated = (
+    profile: ActiveProfile,
+    activatedSongs: SongItem[],
+    activatedThemeId: ThemeId
+  ) => {
+    isRemoteUpdateRef.current = true;
+    setActiveProfile(profile);
+    setSongs(activatedSongs);
+    setThemeId(activatedThemeId);
+    setLastSyncedAt(profile.lastSyncedAt);
+    saveActiveProfile(profile);
+  };
+
+  const handleProfileDisconnected = () => {
+    setActiveProfile(null);
+    saveActiveProfile(null);
+  };
+
+  const handleManualSyncNow = async () => {
+    if (!activeProfile) return;
+    try {
+      setIsSyncing(true);
+      const syncedTime = await syncProfileToCloud(
+        activeProfile.id,
+        activeProfile.displayName,
+        songs,
+        themeId,
+        activeProfile.authProvider
+      );
+      setLastSyncedAt(syncedTime);
+    } catch (err) {
+      console.error('Manual sync error:', err);
+      throw err;
+    } finally {
+      setIsSyncing(false);
+    }
+  };
 
   const activeSong = songs.find((s) => s.id === activeSongId) || null;
 
@@ -148,6 +257,7 @@ export const App: React.FC = () => {
         <PlaylistView
           songs={songs}
           themeId={themeId}
+          activeProfile={activeProfile}
           onChangeTheme={setThemeId}
           onRenameSong={handleRenameSong}
           onChangeMode={handleChangeMode}
@@ -157,8 +267,22 @@ export const App: React.FC = () => {
           onAddSong={handleAddSong}
           onExportJson={() => exportLibraryJson(songs)}
           onImportJson={(imported) => setSongs(imported)}
+          onOpenCloudModal={() => setIsCloudModalOpen(true)}
         />
       )}
+
+      <CloudProfileModal
+        isOpen={isCloudModalOpen}
+        onClose={() => setIsCloudModalOpen(false)}
+        activeProfile={activeProfile}
+        currentSongs={songs}
+        currentThemeId={themeId}
+        onProfileActivated={handleProfileActivated}
+        onProfileDisconnected={handleProfileDisconnected}
+        onSyncNow={handleManualSyncNow}
+        isSyncing={isSyncing}
+        lastSyncedAt={lastSyncedAt}
+      />
 
       {editingSong && (
         <SongEditorModal

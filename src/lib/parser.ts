@@ -143,6 +143,7 @@ export function parseSongBody(body: string, chunkSize = 4): ParsedSong {
   };
 
   const flushDanglingTokensToSection = () => {
+    pendingTokenStartLine = null;
     if (!currentSection) return;
     if (pendingBracketedProgressions.length > 0) {
       currentSection.standaloneProgressions.push(
@@ -204,7 +205,15 @@ export function parseSongBody(body: string, chunkSize = 4): ParsedSong {
       continue;
     }
     if (trimmed === '}') {
+      if (activeLockedChunkGroupId !== undefined && currentSection) {
+        const lastLine = currentSection.lines[currentSection.lines.length - 1];
+        if (lastLine && lastLine.lockedChunkGroupId === activeLockedChunkGroupId) {
+          lastLine.rawEndLine = i;
+          currentSection.rawEndLine = i;
+        }
+      }
       activeLockedChunkGroupId = undefined;
+      pendingTokenStartLine = null;
       continue;
     }
 
@@ -224,6 +233,7 @@ export function parseSongBody(body: string, chunkSize = 4): ParsedSong {
       if (!trimmed) {
         if (closeLockedGroupAfterThisLine) {
           activeLockedChunkGroupId = undefined;
+          pendingTokenStartLine = null;
         }
         continue;
       }
@@ -235,7 +245,18 @@ export function parseSongBody(body: string, chunkSize = 4): ParsedSong {
       trimmed = rawLine.trim();
       closeLockedGroupAfterThisLine = true;
       if (!trimmed) {
+        if (currentSection) {
+          const lastLine = currentSection.lines[currentSection.lines.length - 1];
+          if (
+            lastLine &&
+            lastLine.lockedChunkGroupId === activeLockedChunkGroupId
+          ) {
+            lastLine.rawEndLine = i;
+            currentSection.rawEndLine = i;
+          }
+        }
         activeLockedChunkGroupId = undefined;
+        pendingTokenStartLine = null;
         continue;
       }
     }
@@ -252,12 +273,6 @@ export function parseSongBody(body: string, chunkSize = 4): ParsedSong {
 
     if (numberedHeader || ugSectionHeader) {
       flushDanglingTokensToSection();
-      if (currentSection) {
-        currentSection.rawEndLine = Math.max(
-          currentSection.rawStartLine ?? 0,
-          i - 1
-        );
-      }
       activeLockedChunkGroupId = undefined;
       pendingTokenStartLine = null;
 
@@ -442,6 +457,12 @@ export function parseSongBody(body: string, chunkSize = 4): ParsedSong {
         ? sections[sec.isRepeatOfSectionIndex]?.fullHeader
         : undefined;
 
+    const lastSectionLine = sec.lines[sec.lines.length - 1];
+    const cleanSectionEndLine =
+      sec.isRepeatOfSectionIndex !== null
+        ? sec.rawEndLine
+        : (lastSectionLine?.rawEndLine ?? sec.rawEndLine);
+
     // 1. Whole-section part
     sectionParts.push({
       partIndex: sectionParts.length,
@@ -457,7 +478,7 @@ export function parseSongBody(body: string, chunkSize = 4): ParsedSong {
       lines: sec.lines,
       standaloneProgressions: sec.standaloneProgressions,
       rawStartLine: sec.rawStartLine,
-      rawEndLine: sec.rawEndLine,
+      rawEndLine: cleanSectionEndLine,
     });
 
     // 2. Chunk parts (default 4 lines per chunk, keeping `{ ... }` groups locked together)
@@ -484,7 +505,7 @@ export function parseSongBody(body: string, chunkSize = 4): ParsedSong {
         lines: sec.lines,
         standaloneProgressions: sec.standaloneProgressions,
         rawStartLine: sec.rawStartLine,
-        rawEndLine: sec.rawEndLine,
+        rawEndLine: cleanSectionEndLine,
       });
     } else {
       const totalChunks = partitionedSlices.length;

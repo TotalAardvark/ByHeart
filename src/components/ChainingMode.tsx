@@ -480,10 +480,10 @@ export const ChainingMode: React.FC<ChainingModeProps> = ({
         isRepeat: isCollapsedRepeat,
         lines: part.lines,
         standaloneProgressions: part.standaloneProgressions,
-        showHeader: part.isFirstChunkOfSection || visibleParts.length === 1,
+        showHeader: true,
       });
     },
-    [expandedRepeatParts, visibleParts.length]
+    [expandedRepeatParts]
   );
 
   const getPartCharWidth = useCallback(
@@ -495,13 +495,13 @@ export const ChainingMode: React.FC<ChainingModeProps> = ({
         isRepeat: isCollapsedRepeat,
         lines: part.lines,
         standaloneProgressions: part.standaloneProgressions,
-        showHeader: part.isFirstChunkOfSection || visibleParts.length === 1,
+        showHeader: true,
         title: part.title,
         sectionHeader: part.sectionHeader,
         repeatOfSectionHeader: part.repeatOfSectionHeader,
       });
     },
-    [expandedRepeatParts, visibleParts.length]
+    [expandedRepeatParts]
   );
 
   // Reset to 1-column candidate on step/content change before measuring in useLayoutEffect
@@ -517,6 +517,8 @@ export const ChainingMode: React.FC<ChainingModeProps> = ({
     song.body,
   ]);
 
+  const isCurrentStepBlankable = shouldBlankStep(currentStep?.type);
+
   const recomputeScale = useCallback(() => {
     const stageEl = stageRef.current;
     const contentEl = contentRef.current;
@@ -526,8 +528,9 @@ export const ChainingMode: React.FC<ChainingModeProps> = ({
     const stageH = stageEl.clientHeight;
     const isLandscape = stageW > stageH * 1.1;
 
-    // Reserve extra breathing room (plus space underneath when Blanking is enabled)
-    const coachingReserveY = blankingConfig.enabled ? 64 : 0;
+    // Reserve extra breathing room underneath only when Blanking is actively shown on the stage
+    const isActivelyBlanked = isBlankedStage && isCurrentStepBlankable;
+    const coachingReserveY = isActivelyBlanked ? 64 : 0;
 
     const padX = isLandscape ? 48 : 32;
     const bottomBreathingSpace = Math.max(24, Math.round(stageH * 0.035));
@@ -576,16 +579,19 @@ export const ChainingMode: React.FC<ChainingModeProps> = ({
     setScale(finalScale);
 
     // Compute exact Y position right underneath the scaled shape so the quote/tip sits gracefully below it
-    const stageCenterOffsetRatio = blankingConfig.enabled ? 0.46 : 0.4875;
+    // without ever clamping above visualBottomY and overlapping text on low-height viewports
+    const stageCenterOffsetRatio = isActivelyBlanked ? 0.46 : 0.4875;
     const visualBottomY =
       stageH * stageCenterOffsetRatio + (naturalH * finalScale) / 2;
-    const clampedTop = Math.min(
-      Math.max(120, stageH - 84),
-      Math.round(visualBottomY + 10)
+    const desiredTop = Math.round(visualBottomY + 10);
+    const clampedTop = Math.max(
+      Math.round(visualBottomY + 4),
+      Math.min(Math.max(120, stageH - 76), desiredTop)
     );
     setUnderneathTopPx(clampedTop);
   }, [
-    blankingConfig.enabled,
+    isBlankedStage,
+    isCurrentStepBlankable,
     columnCount,
     visibleParts,
     safeStepIndex,
@@ -1290,7 +1296,7 @@ export const ChainingMode: React.FC<ChainingModeProps> = ({
         onPointerDown={handleStagePointerDown}
         onPointerUp={handleStagePointerUp}
         className={`flex-1 w-full h-full overflow-hidden flex items-center justify-center relative cursor-pointer ${
-          blankingConfig.enabled ? 'pb-[8vh]' : 'pb-[2.5vh]'
+          isBlankedStage && isCurrentStepBlankable ? 'pb-[8vh]' : 'pb-[2.5vh]'
         }`}
       >
         <div
@@ -1431,6 +1437,7 @@ export const ChainingMode: React.FC<ChainingModeProps> = ({
         <RefineChunkModal
           song={song}
           targetPart={refiningPart}
+          granularity={granularity}
           onSave={(updated) => {
             if (onSaveSong) {
               onSaveSong(updated);

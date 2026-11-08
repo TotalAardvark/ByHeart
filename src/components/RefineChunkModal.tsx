@@ -1,4 +1,10 @@
-import React, { useState, useMemo, useEffect, useRef } from 'react';
+import React, {
+  useState,
+  useMemo,
+  useEffect,
+  useRef,
+  useCallback,
+} from 'react';
 import {
   X,
   Save,
@@ -7,12 +13,13 @@ import {
   ArrowUpRight,
   Info,
 } from 'lucide-react';
-import { SongItem, ParsedPart } from '../types';
+import { SongItem, ParsedPart, ChainingGranularity } from '../types';
 import { parseSongBody } from '../lib/parser';
 
 interface RefineChunkModalProps {
   song: SongItem;
   targetPart: ParsedPart;
+  granularity?: ChainingGranularity;
   onSave: (updated: SongItem) => void;
   onOpenFullEditor: () => void;
   onClose: () => void;
@@ -21,6 +28,7 @@ interface RefineChunkModalProps {
 export const RefineChunkModal: React.FC<RefineChunkModalProps> = ({
   song,
   targetPart,
+  granularity = 'chunk',
   onSave,
   onOpenFullEditor,
   onClose,
@@ -37,12 +45,34 @@ export const RefineChunkModal: React.FC<RefineChunkModalProps> = ({
     return body.replace(/\r\n/g, '\n').split('\n');
   }, [body]);
 
-  // Dynamically track the target chunk's start and end line ranges as user edits
+  // Compute max character length across all lines so unwrapped text / ASCII TABs expand horizontally without clipping
+  const maxLineChars = useMemo(() => {
+    let max = 40;
+    for (const line of lines) {
+      if (line.length > max) max = line.length;
+    }
+    return max;
+  }, [lines]);
+
+  // Dynamically track the target chunk's or section's start and end line ranges as user edits
   const parsed = useMemo(() => {
     return parseSongBody(body, song.chunkSize);
   }, [body, song.chunkSize]);
 
   const activeChunkRange = useMemo(() => {
+    // When refining in Sections mode (or a whole-section part), match against parsed.sectionParts
+    if (granularity === 'section' || targetPart.totalChunksInSection === 1) {
+      const matchingSection = parsed.sectionParts.find(
+        (p) => p.sectionIndex === targetPart.sectionIndex
+      );
+      if (matchingSection && matchingSection.rawStartLine !== undefined) {
+        return {
+          startLine: matchingSection.rawStartLine,
+          endLine: matchingSection.rawEndLine ?? matchingSection.rawStartLine,
+        };
+      }
+    }
+
     // Attempt to locate the exact same section and chunk in the parsed tree
     const matching = parsed.chunkParts.find(
       (p) =>
@@ -60,7 +90,7 @@ export const RefineChunkModal: React.FC<RefineChunkModalProps> = ({
       startLine: targetPart.rawStartLine ?? 0,
       endLine: targetPart.rawEndLine ?? targetPart.rawStartLine ?? 0,
     };
-  }, [parsed, targetPart]);
+  }, [parsed, targetPart, granularity]);
 
   // Center scroll on the target chunk on initial modal mount
   useEffect(() => {
@@ -77,22 +107,21 @@ export const RefineChunkModal: React.FC<RefineChunkModalProps> = ({
     el.scrollTop = targetScroll;
   }, []);
 
-  const handleSave = () => {
+  const handleSave = useCallback(() => {
     onSave({
       ...song,
       body,
       updatedAt: Date.now(),
     });
-    onClose();
-  };
+  }, [onSave, song, body]);
 
-  const handleAttemptClose = () => {
+  const handleAttemptClose = useCallback(() => {
     if (isDirty) {
       setShowDiscardConfirm(true);
     } else {
       onClose();
     }
-  };
+  }, [isDirty, onClose]);
 
   // Keyboard shortcuts (Cmd/Ctrl+Enter = Save, Escape = Close/Discard)
   useEffect(() => {
@@ -113,7 +142,7 @@ export const RefineChunkModal: React.FC<RefineChunkModalProps> = ({
     };
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [body, song, showDiscardConfirm, isDirty]);
+  }, [handleSave, handleAttemptClose, showDiscardConfirm]);
 
   // Jump to repeated source section if this chunk is a repeat reference
   const handleScrollToRepeatSource = () => {
@@ -131,10 +160,10 @@ export const RefineChunkModal: React.FC<RefineChunkModalProps> = ({
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-2 sm:p-4 md:p-6 bg-black/80 backdrop-blur-sm animate-fade-in">
-      <div className="w-full max-w-4xl max-h-[92vh] flex flex-col rounded-2xl bg-stone-900 border border-stone-800 shadow-2xl overflow-hidden">
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-2 sm:p-4 md:p-6 bg-stone-950/85 backdrop-blur-md animate-fade-in">
+      <div className="w-full max-w-4xl max-h-[92vh] flex flex-col rounded-2xl bg-stone-900 border border-stone-700/80 shadow-2xl overflow-hidden">
         {/* Header */}
-        <div className="flex items-center justify-between px-5 py-3.5 border-b border-stone-800 bg-stone-900/90">
+        <div className="flex items-center justify-between px-5 py-3.5 border-b border-stone-800 bg-stone-900/95">
           <div className="flex items-center gap-3 min-w-0">
             <span className="text-base sm:text-lg font-bold text-stone-100 truncate">
               Refine Chunk
@@ -185,26 +214,26 @@ export const RefineChunkModal: React.FC<RefineChunkModalProps> = ({
           ref={scrollContainerRef}
           className="relative flex-1 overflow-auto bg-stone-950 font-mono text-sm leading-6"
         >
-          {/* Theme-tinted chunk highlight strip */}
-          <div
-            style={{
-              top: `${activeChunkRange.startLine * 24 + 16}px`,
-              height: `${
-                Math.max(
-                  1,
-                  activeChunkRange.endLine - activeChunkRange.startLine + 1
-                ) * 24
-              }px`,
-            }}
-            className="absolute left-0 right-0 bg-amber-400/12 border-y border-amber-400/30 border-l-4 border-l-amber-400 pointer-events-none transition-all duration-150"
-          >
-            <div className="sticky right-4 top-2 float-right mr-3 px-2.5 py-0.5 rounded text-[11px] font-bold uppercase tracking-wider bg-amber-400/25 text-amber-300 border border-amber-400/40 select-none shadow-sm flex items-center gap-1.5">
-              <span className="w-1.5 h-1.5 rounded-full bg-amber-400 animate-pulse" />
-              Current Chunk
+          <div className="relative flex min-h-full min-w-full w-max">
+            {/* Theme-tinted chunk highlight strip spanning full scrollable content width */}
+            <div
+              style={{
+                top: `${activeChunkRange.startLine * 24 + 16}px`,
+                height: `${
+                  Math.max(
+                    1,
+                    activeChunkRange.endLine - activeChunkRange.startLine + 1
+                  ) * 24
+                }px`,
+              }}
+              className="absolute inset-x-0 bg-amber-400/12 border-y border-amber-400/30 border-l-4 border-l-amber-400 pointer-events-none transition-all duration-150"
+            >
+              <div className="sticky right-4 top-2 float-right mr-3 px-2.5 py-0.5 rounded text-[11px] font-bold uppercase tracking-wider bg-amber-400/25 text-amber-300 border border-amber-400/40 select-none shadow-sm flex items-center gap-1.5">
+                <span className="w-1.5 h-1.5 rounded-full bg-amber-400 animate-pulse" />
+                Current Chunk
+              </div>
             </div>
-          </div>
 
-          <div className="flex min-h-full">
             {/* Gutter with line numbers */}
             <div className="select-none py-4 px-3 text-right text-stone-600 bg-stone-950/90 border-r border-stone-800/80 sticky left-0 z-10 font-mono text-xs leading-6 min-w-[3rem]">
               {lines.map((_, i) => {
@@ -236,13 +265,14 @@ export const RefineChunkModal: React.FC<RefineChunkModalProps> = ({
               className="flex-1 py-4 px-4 bg-transparent text-stone-100 font-mono text-sm leading-6 resize-none outline-none overflow-hidden whitespace-pre selection:bg-amber-400/30 selection:text-amber-200"
               style={{
                 minHeight: `${Math.max(lines.length * 24 + 48, 280)}px`,
+                minWidth: `calc(${maxLineChars}ch + 3rem)`,
               }}
             />
           </div>
         </div>
 
         {/* Footer Controls */}
-        <div className="flex flex-wrap items-center justify-between gap-3 px-5 py-3 border-t border-stone-800 bg-stone-900/90">
+        <div className="flex flex-wrap items-center justify-between gap-3 px-5 py-3 border-t border-stone-800 bg-stone-900/95">
           <div className="flex items-center gap-3">
             <button
               onClick={() => {
@@ -286,22 +316,22 @@ export const RefineChunkModal: React.FC<RefineChunkModalProps> = ({
 
       {/* Discard Edits Confirmation Alert */}
       {showDiscardConfirm && (
-        <div className="fixed inset-0 z-60 flex items-center justify-center p-4 bg-black/60 backdrop-blur-xs">
-          <div className="max-w-sm w-full p-5 rounded-2xl bg-stone-900 border border-stone-700 shadow-2xl space-y-3">
-            <div className="flex items-center gap-3 text-amber-400">
-              <AlertTriangle className="w-5 h-5 shrink-0" />
-              <h4 className="font-bold text-stone-100 text-sm">
-                Discard Changes?
-              </h4>
+        <div className="fixed inset-0 z-60 flex items-center justify-center p-4 bg-stone-950/80 backdrop-blur-sm">
+          <div className="max-w-sm w-full p-6 rounded-2xl bg-stone-900 border border-stone-700 shadow-2xl text-center">
+            <div className="w-11 h-11 rounded-2xl bg-amber-500/15 border border-amber-500/30 text-amber-300 flex items-center justify-center mx-auto mb-3">
+              <AlertTriangle className="w-5 h-5" />
             </div>
-            <p className="text-xs text-stone-400 leading-relaxed">
+            <h4 className="font-bold text-stone-100 text-base sm:text-lg mb-1">
+              Discard unsaved changes?
+            </h4>
+            <p className="text-xs sm:text-sm text-stone-400 mb-5 leading-relaxed">
               You have unsaved changes in this chunk. Are you sure you want to
               exit without saving?
             </p>
-            <div className="flex items-center justify-end gap-2 pt-2">
+            <div className="flex items-center justify-center gap-2.5">
               <button
                 onClick={() => setShowDiscardConfirm(false)}
-                className="px-3 py-1.5 rounded-lg text-xs font-medium text-stone-300 hover:bg-stone-800 transition cursor-pointer"
+                className="px-4 py-2 rounded-lg text-xs font-medium bg-stone-800 hover:bg-stone-700 text-stone-200 transition cursor-pointer"
               >
                 Keep Editing
               </button>
@@ -310,9 +340,9 @@ export const RefineChunkModal: React.FC<RefineChunkModalProps> = ({
                   setShowDiscardConfirm(false);
                   onClose();
                 }}
-                className="px-3 py-1.5 rounded-lg text-xs font-bold bg-rose-500 hover:bg-rose-600 text-white transition cursor-pointer"
+                className="px-4 py-2 rounded-lg text-xs font-semibold bg-rose-500/20 hover:bg-rose-500/30 text-rose-300 border border-rose-500/40 transition cursor-pointer"
               >
-                Discard
+                Discard Changes
               </button>
             </div>
           </div>

@@ -78,4 +78,7 @@ function chordUrlScraperPlugin(): Plugin {
 export default defineConfig({
   base: './',
   plugins: [react(), tailwindcss(), chordUrlScraperPlugin()],
-});
+  test: {
+    exclude: ['**/node_modules/**', '**/dist/**', '**/.worktrees/**'],
+  },
+} as import('vite').UserConfig);

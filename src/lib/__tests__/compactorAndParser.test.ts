@@ -309,12 +309,34 @@ Chorus Line 2
     expect(chunk1b.rawStartLine).toBe(9);
     expect(chunk1b.rawEndLine).toBe(10);
 
-    // Section 2: Chorus starts at line 12 ("2. Chorus")
+    // Section 2: Chorus starts at line 12 ("2. Chorus") and ends cleanly at line 15 ("Chorus Line 2"), excluding trailing newline
     const chorus = parsed.sections[1];
     expect(chorus.rawStartLine).toBe(12);
     const chorusChunk = parsed.chunkParts[2];
     expect(chorusChunk.title).toContain('2. Chorus');
     expect(chorusChunk.rawStartLine).toBe(12);
+    expect(chorusChunk.rawEndLine).toBe(15);
+    expect(parsed.sectionParts[0].rawStartLine).toBe(3);
+    expect(parsed.sectionParts[0].rawEndLine).toBe(10);
+    expect(parsed.sectionParts[1].rawStartLine).toBe(12);
+    expect(parsed.sectionParts[1].rawEndLine).toBe(15);
+  });
+
+  it('resets pendingTokenStartLine across empty brace blocks {} or comment-only blocks', () => {
+    const rawSong = `1. Verse 1
+{
+(( silenced comment inside braces ))
+}
+Actual lyric line 1
+Actual lyric line 2
+`;
+    const parsed = parseSongBody(rawSong, 4);
+    expect(parsed.sections).toHaveLength(1);
+    const lines = parsed.sections[0].lines;
+    expect(lines).toHaveLength(2);
+    // "Actual lyric line 1" is at line 4, not dragged back to line 1 ("{")
+    expect(lines[0].rawStartLine).toBe(4);
+    expect(lines[0].rawEndLine).toBe(4);
   });
 
   it('preserves line indexing when chord-over-lyric lines and locked chunks are parsed', () => {
@@ -343,7 +365,7 @@ Fifth line alone
     // Second chunk is the { ... } locked block
     const chunk2 = parsed.chunkParts[1];
     expect(chunk2.rawStartLine).toBe(5); // Starts at "{"
-    expect(chunk2.rawEndLine).toBe(7); // Ends at "Fourth line locked"
+    expect(chunk2.rawEndLine).toBe(8); // Includes closing "}" on line 8
 
     // Third chunk is Fifth line alone
     const chunk3 = parsed.chunkParts[2];

@@ -54,7 +54,8 @@ export function estimateItemCharWidth(item: WeighableItem): number {
   let maxChars = 24;
   if (item.showHeader !== false) {
     const headerText = item.title || item.sectionHeader || '';
-    maxChars = Math.max(maxChars, headerText.length);
+    // Account for header text plus inline action/pencil icon spacing (~3 chars)
+    maxChars = Math.max(maxChars, headerText.length + 3);
   }
 
   for (const prog of item.standaloneProgressions) {

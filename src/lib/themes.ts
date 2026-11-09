@@ -125,7 +125,7 @@ export function loadThemeId(): ThemeId {
   } catch {
     // ignore storage errors
   }
-  return 'ocean';
+  return 'sorbet';
 }
 
 export function saveThemeId(id: ThemeId): void {

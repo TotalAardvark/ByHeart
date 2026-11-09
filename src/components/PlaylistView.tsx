@@ -15,6 +15,7 @@ import {
   Palette,
   X,
   Cloud,
+  Info,
 } from 'lucide-react';
 import { PracticeMode, SongItem } from '../types';
 import { parseSongBody } from '../lib/parser';
@@ -41,6 +42,7 @@ interface PlaylistViewProps {
   onExportJson: () => void;
   onImportJson: (songs: SongItem[]) => void;
   onOpenCloudModal: () => void;
+  onOpenLanding?: () => void;
 }
 
 export const MODE_META: Record<
@@ -93,6 +95,7 @@ export const PlaylistView: React.FC<PlaylistViewProps> = ({
   onExportJson,
   onImportJson,
   onOpenCloudModal,
+  onOpenLanding,
 }) => {
   const [editingNameId, setEditingNameId] = useState<string | null>(null);
   const [nameDraft, setNameDraft] = useState('');
@@ -321,6 +324,19 @@ export const PlaylistView: React.FC<PlaylistViewProps> = ({
                 ))}
               </span>
             </button>
+
+            {/* 4. TOUR & ABOUT BYHEART BUTTON */}
+            {onOpenLanding && (
+              <button
+                onClick={onOpenLanding}
+                title="Explore By Heart cognitive science tour and marketing page"
+                aria-label="Open By Heart tour and marketing page"
+                className="px-3 py-2 rounded-lg text-xs font-medium bg-stone-900 hover:bg-stone-800 text-stone-300 border border-stone-800 flex items-center gap-1.5 transition cursor-pointer"
+              >
+                <Info className="w-3.5 h-3.5 text-sky-400 shrink-0" />
+                <span className="hidden sm:inline">Tour &amp; Science</span>
+              </button>
+            )}
           </div>
         </div>
       </header>

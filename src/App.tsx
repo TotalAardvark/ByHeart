@@ -3,6 +3,7 @@ import { PracticeMode, SongItem } from './types';
 import { exportLibraryJson, loadSongs, saveSongs } from './lib/storage';
 import {
   ThemeId,
+  THEME_PALETTES,
   applyThemeToDocument,
   loadThemeId,
   saveThemeId,
@@ -20,13 +21,37 @@ import { ChainingMode } from './components/ChainingMode';
 import { ScaffoldMode } from './components/ScaffoldMode';
 import { FlashcardMode } from './components/FlashcardMode';
 import { CloudProfileModal } from './components/CloudProfileModal';
+import { LandingPage } from './components/LandingPage';
 
 export const App: React.FC = () => {
+  const [isLandingOpen, setIsLandingOpen] = useState<boolean>(() => {
+    if (typeof window !== 'undefined') {
+      const path = window.location.pathname.toLowerCase();
+      const hash = window.location.hash.toLowerCase();
+      const search = window.location.search.toLowerCase();
+      // If URL explicitly requests the studio app, open app directly
+      if (path === '/app' || path.endsWith('/app') || hash === '#app' || search.includes('app=true') || search.includes('view=app')) {
+        return false;
+      }
+      // Default to landing page for root '/', '/about', '/welcome', etc.
+      return true;
+    }
+    return true;
+  });
   const [songs, setSongs] = useState<SongItem[]>(() => loadSongs());
   const [themeId, setThemeId] = useState<ThemeId>(() => {
     const initial = loadThemeId();
     applyThemeToDocument(initial);
     return initial;
+  });
+  const [landingThemeId, setLandingThemeId] = useState<ThemeId>(() => {
+    try {
+      const saved = localStorage.getItem('by_heart_landing_theme') as ThemeId | null;
+      if (saved && THEME_PALETTES.some((t) => t.id === saved)) {
+        return saved;
+      }
+    } catch {}
+    return 'sorbet';
   });
   const [activeProfile, setActiveProfile] = useState<ActiveProfile | null>(() => loadActiveProfile());
   const [isCloudModalOpen, setIsCloudModalOpen] = useState(false);
@@ -46,9 +71,50 @@ export const App: React.FC = () => {
   }, [songs]);
 
   useEffect(() => {
-    applyThemeToDocument(themeId);
-    saveThemeId(themeId);
-  }, [themeId]);
+    if (isLandingOpen) {
+      applyThemeToDocument(landingThemeId);
+    } else {
+      applyThemeToDocument(themeId);
+      saveThemeId(themeId);
+    }
+  }, [isLandingOpen, landingThemeId, themeId]);
+
+  // Handle URL history and hash routing between Landing and Studio (compatible with GitHub Pages)
+  useEffect(() => {
+    const handleUrlChange = () => {
+      const path = window.location.pathname.toLowerCase();
+      const hash = window.location.hash.toLowerCase();
+      const search = window.location.search.toLowerCase();
+      if (path === '/app' || path.endsWith('/app') || hash === '#app' || search.includes('app')) {
+        setIsLandingOpen(false);
+      } else {
+        setIsLandingOpen(true);
+      }
+    };
+
+    window.addEventListener('popstate', handleUrlChange);
+    window.addEventListener('hashchange', handleUrlChange);
+    return () => {
+      window.removeEventListener('popstate', handleUrlChange);
+      window.removeEventListener('hashchange', handleUrlChange);
+    };
+  }, []);
+
+  const handleOpenLanding = () => {
+    setIsLandingOpen(true);
+    if (typeof window !== 'undefined') {
+      if (window.location.hash) {
+        window.history.pushState(null, '', window.location.pathname + window.location.search);
+      }
+    }
+  };
+
+  const handleEnterApp = () => {
+    setIsLandingOpen(false);
+    if (typeof window !== 'undefined') {
+      window.location.hash = 'app';
+    }
+  };
 
   // Real-time Cloud Subscription: listen to remote profile changes
   useEffect(() => {
@@ -227,7 +293,18 @@ export const App: React.FC = () => {
 
   return (
     <>
-      {activeSong ? (
+      {isLandingOpen ? (
+        <LandingPage
+          currentThemeId={landingThemeId}
+          onSelectTheme={(newTheme) => {
+            setLandingThemeId(newTheme);
+            try {
+              localStorage.setItem('by_heart_landing_theme', newTheme);
+            } catch {}
+          }}
+          onEnterApp={handleEnterApp}
+        />
+      ) : activeSong ? (
         activeSong.lastMode === 'chain' ? (
           <ChainingMode
             song={activeSong}
@@ -269,6 +346,7 @@ export const App: React.FC = () => {
           onExportJson={() => exportLibraryJson(songs)}
           onImportJson={(imported) => setSongs(imported)}
           onOpenCloudModal={() => setIsCloudModalOpen(true)}
+          onOpenLanding={handleOpenLanding}
         />
       )}
 

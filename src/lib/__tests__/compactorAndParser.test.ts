@@ -184,10 +184,10 @@ Line 8
     // Expected flow for V1 (0), C1 (1), V2 (2), C2 (3 - repeat of 1):
     // Step 0: Learn V1 [0] -> pill 0 yellow
     // Step 1: Learn C1 [1] -> pill 0 green, pill 1 yellow
-    // Step 2: Chain V1+C1 [0, 1] -> pills 0, 1 yellow
+    // Step 2: Chain V1+C1 [0, 1] -> pills 0, 1 green (persistent mastery: C1 locks in as completed)
     // Step 3: Learn V2 [2] -> pills 0, 1 green, pill 2 yellow
-    // Step 4: Chain V1+C1+V2 [0, 1, 2] -> pills 0, 1, 2 yellow
-    // Step 5: Confirm V1+C1+V2+C2 [0, 1, 2, 3] (skips isolated C2!) -> pills 0, 1, 2, 3 yellow
+    // Step 4: Chain V1+C1+V2 [0, 1, 2] -> pills 0, 1, 2 green
+    // Step 5: Confirm V1+C1+V2+C2 [0, 1, 2, 3] (skips isolated C2!) -> pills 0, 1, 2, 3 green
     expect(steps.map((s) => s.visiblePartIndices)).toEqual([
       [0],
       [1],
@@ -199,18 +199,18 @@ Line 8
 
     expect(steps[0].pillStates).toEqual({ 0: 'yellow' });
     expect(steps[1].pillStates).toEqual({ 0: 'green', 1: 'yellow' });
-    expect(steps[2].pillStates).toEqual({ 0: 'yellow', 1: 'yellow' });
+    expect(steps[2].pillStates).toEqual({ 0: 'green', 1: 'green' });
     expect(steps[3].pillStates).toEqual({ 0: 'green', 1: 'green', 2: 'yellow' });
     expect(steps[4].pillStates).toEqual({
-      0: 'yellow',
-      1: 'yellow',
-      2: 'yellow',
+      0: 'green',
+      1: 'green',
+      2: 'green',
     });
     expect(steps[5].pillStates).toEqual({
-      0: 'yellow',
-      1: 'yellow',
-      2: 'yellow',
-      3: 'yellow',
+      0: 'green',
+      1: 'green',
+      2: 'green',
+      3: 'green',
     });
   });
 

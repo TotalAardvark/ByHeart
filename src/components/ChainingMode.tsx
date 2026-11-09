@@ -716,14 +716,6 @@ export const ChainingMode: React.FC<ChainingModeProps> = ({
     };
   }, [recomputeScale]);
 
-  // Growing Pill Bar logic:
-  // In Guided mode, the pill bar grows as your memory progresses (showing parts 0..targetPartIndex).
-  // In Sliding Window / Custom Range mode, we show all pills so you can see/click the window across the song.
-  const displayedPillCount =
-    strategy === 'guided' && currentStep
-      ? currentStep.targetPartIndex + 1
-      : parts.length;
-
   const handlePillClick = (
     partIdx: number,
     e: React.MouseEvent<HTMLButtonElement>
@@ -1386,29 +1378,45 @@ export const ChainingMode: React.FC<ChainingModeProps> = ({
             </div>
           </div>
 
-          {/* Row 2: Growing Yellow / Green Pill Bar */}
+          {/* Row 2: Full-Track Progress Bar (Minimalist Colored Dots + Active Expanded Pill) */}
           <div className="flex items-center gap-1.5 flex-wrap py-0.5">
-            {parts.slice(0, displayedPillCount).map((part) => {
+            {parts.map((part) => {
               const pillColor = currentStep?.pillStates[part.partIndex];
               const isYellow = pillColor === 'yellow';
               const isGreen = pillColor === 'green';
+              const isExpanded =
+                strategy === 'guided'
+                  ? part.partIndex === currentStep?.targetPartIndex
+                  : Boolean(
+                      currentStep?.visiblePartIndices.includes(part.partIndex)
+                    );
 
               return (
                 <button
                   key={part.partIndex}
                   onClick={(e) => handlePillClick(part.partIndex, e)}
                   title={`${part.title} — Click to jump, Shift+Click to select custom window`}
-                  className={`px-2.5 py-1 rounded-full text-xs font-mono font-semibold transition-all duration-200 flex items-center gap-1 cursor-pointer shadow-sm ${
+                  className={`relative h-6 rounded-full text-xs font-mono font-semibold transition-all duration-200 flex items-center justify-center cursor-pointer shadow-sm before:content-[''] before:absolute before:-inset-y-1.5 before:-inset-x-0.5 ${
+                    isExpanded ? 'px-2.5 gap-1' : 'w-6 shrink-0'
+                  } ${
                     isYellow
                       ? 'btn-primary ring-2 ring-amber-300/60 shadow-amber-500/20 scale-[1.02]'
                       : isGreen
-                      ? 'btn-secondary opacity-90 hover:opacity-100'
-                      : 'bg-stone-800 text-stone-400 hover:bg-stone-700'
+                      ? `btn-secondary ${
+                          isExpanded
+                            ? 'ring-2 ring-emerald-300/60 scale-[1.02]'
+                            : 'opacity-90 hover:opacity-100'
+                        }`
+                      : 'bg-stone-800/70 text-stone-400 border border-stone-700/60 opacity-60 hover:opacity-100 hover:bg-stone-800'
                   }`}
                 >
-                  <span>{part.pillLabel}</span>
-                  {part.isRepeatOfSectionIndex !== null && (
-                    <RefreshCw className="w-3 h-3 opacity-75" />
+                  {isExpanded && (
+                    <>
+                      <span>{part.pillLabel}</span>
+                      {part.isRepeatOfSectionIndex !== null && (
+                        <RefreshCw className="w-3 h-3 opacity-75" />
+                      )}
+                    </>
                   )}
                 </button>
               );

@@ -4,9 +4,9 @@ import { ChainStep, ParsedPart } from '../types';
  * Generates the serial forward chaining sequence for a list of parts:
  * - Part 1 (pt1 yellow)
  * - Part 2 (pt1 green, pt2 yellow)
- * - Parts 1+2 (pt1..2 yellow)
+ * - Parts 1+2 (pt1..2 green — persistent mastery locks in pt2 as completed)
  * - Part 3 (pt1..2 green, pt3 yellow)
- * - Parts 1+2+3 (pt1..3 yellow)
+ * - Parts 1+2+3 (pt1..3 green)
  *
  * Automatically skips the isolated learning step for repeated sections (e.g. Chorus 2),
  * jumping straight to the concatenated confirmation step (e.g. v1+c1+v2+c2).
@@ -48,11 +48,11 @@ export function buildGuidedChainSteps(parts: ParsedPart[]): ChainStep[] {
       });
     }
 
-    // 2. Concatenated step from 0..i
+    // 2. Concatenated step from 0..i (persistent mastery: all 0..i lock in as completed 'green')
     const concatPills: Record<number, 'yellow' | 'green'> = {};
     const visibleIndices: number[] = [];
     for (let k = 0; k <= i; k++) {
-      concatPills[k] = 'yellow';
+      concatPills[k] = 'green';
       visibleIndices.push(k);
     }
 

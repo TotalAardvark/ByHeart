@@ -176,11 +176,6 @@ export const ScaffoldMode: React.FC<ScaffoldModeProps> = ({
     [parsed.sections]
   );
 
-  useLayoutEffect(() => {
-    evaluatedLayoutKeyRef.current = '';
-    setColumnCount(1);
-  }, [song.body]);
-
   const recomputeScale = useCallback(() => {
     const stageEl = stageRef.current;
     const contentEl = contentRef.current;
@@ -200,13 +195,14 @@ export const ScaffoldMode: React.FC<ScaffoldModeProps> = ({
     const naturalW = Math.max(1, contentEl.offsetWidth);
     const naturalH = Math.max(1, contentEl.offsetHeight);
 
-    if (!isLandscape) {
+    if (!isLandscape || parsed.sections.length < 2) {
+      evaluatedLayoutKeyRef.current = '';
       if (columnCount !== 1) {
         setColumnCount(1);
         return;
       }
-    } else if (parsed.sections.length >= 2) {
-      const layoutKey = `${Math.round(availW / 8)}x${Math.round(availH / 8)}:${parsed.sections.length}:${viewMode}`;
+    } else {
+      const layoutKey = `${Math.round(availW / 8)}x${Math.round(availH / 8)}:${parsed.sections.length}:${viewMode}:${song.body.length}`;
       if (evaluatedLayoutKeyRef.current !== layoutKey) {
         const optimalCols = selectOptimalColumnCount({
           items: parsed.sections,
@@ -235,6 +231,7 @@ export const ScaffoldMode: React.FC<ScaffoldModeProps> = ({
     columnCount,
     parsed.sections,
     viewMode,
+    song.body.length,
     getSectionWeight,
     getSectionCharWidth,
   ]);

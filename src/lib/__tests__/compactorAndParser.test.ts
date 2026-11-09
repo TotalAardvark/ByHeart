@@ -12,16 +12,21 @@ import { parseChordSheetFromHtml } from '../urlScraper';
 import { buildGuidedChainSteps } from '../chaining';
 import {
   COMPACTED_ROTTERDAM_BODY,
+  COMPACTED_SHALLOW_BODY,
   RAW_ROTTERDAM_UG_SAMPLE,
   RAW_SHALLOW_UG_SAMPLE,
 } from '../sampleSongs';
 import { THEME_PALETTES, getThemePalette } from '../themes';
 import {
+  buildSectionLayoutKey,
+  clampCustomScale,
+  computeViewportFillRatio,
   estimateItemCharWidth,
   estimateItemVisualWeight,
   selectOptimalColumnCount,
   splitIntoBalancedColumns,
   splitIntoTwoBalancedPages,
+  updateSectionLayoutOverride,
 } from '../layoutUtils';
 
 describe('Smart Ultimate Guitar Compactor', () => {
@@ -555,6 +560,139 @@ Am           D/F#
       getCharWidth,
     });
     expect(optimalCols).toBe(3);
+  });
+
+  it('keeps Shallow Step 13 (up to 9. Chorus) and Step 14 (adding 10. Post-Chorus) in 2 columns at ~60-66% scale instead of collapsing to 1 column, and upgrades to 3 columns when repeat pills are expanded', () => {
+    const parsed = parseSongBody(COMPACTED_SHALLOW_BODY, 4);
+    const partsWithoutIntro = parsed.sectionParts.slice(1);
+    const steps = buildGuidedChainSteps(partsWithoutIntro);
+
+    const step13Visible = steps[12].visiblePartIndices.map(
+      (i) => partsWithoutIntro[i]
+    );
+    const step14Visible = steps[13].visiblePartIndices.map(
+      (i) => partsWithoutIntro[i]
+    );
+
+    const makeEvaluators = (expanded: boolean) => ({
+      getWeight: (p: (typeof partsWithoutIntro)[number]) =>
+        estimateItemVisualWeight({
+          isRepeat: p.isRepeatOfSectionIndex !== null && !expanded,
+          lines: p.lines,
+          standaloneProgressions: p.standaloneProgressions,
+          showHeader: true,
+        }),
+      getCharWidth: (p: (typeof partsWithoutIntro)[number]) =>
+        estimateItemCharWidth({
+          isRepeat: p.isRepeatOfSectionIndex !== null && !expanded,
+          lines: p.lines,
+          standaloneProgressions: p.standaloneProgressions,
+          showHeader: true,
+          title: p.title,
+          sectionHeader: p.sectionHeader,
+          repeatOfSectionHeader: p.repeatOfSectionHeader,
+        }),
+    });
+
+    const collapsedEval = makeEvaluators(false);
+    // Medium landscape stage matching user screenshot (~943x551)
+    const availW = 943;
+    const availH = 551;
+
+    const colsStep13 = selectOptimalColumnCount({
+      items: step13Visible,
+      currentColumns: 2,
+      maxColumns: 4,
+      availW,
+      availH,
+      naturalW: 1220,
+      naturalH: 836,
+      maxScale: 1.05,
+      ...collapsedEval,
+    });
+    expect(colsStep13).toBe(2);
+
+    // Advancing from Step 13 (currentColumns = 2) to Step 14 (adding 10. Post-Chorus) must stay 2 columns
+    const colsStep14Collapsed = selectOptimalColumnCount({
+      items: step14Visible,
+      currentColumns: 2,
+      maxColumns: 4,
+      availW,
+      availH,
+      naturalW: 1220,
+      naturalH: 917,
+      maxScale: 1.05,
+      ...collapsedEval,
+    });
+    expect(colsStep14Collapsed).toBe(2);
+
+    // Verify 2-column split puts 10. Post-Chorus at the bottom of column 2
+    const [col1, col2] = splitIntoTwoBalancedPages(
+      step14Visible,
+      collapsedEval.getWeight
+    );
+    expect(col1.map((p) => p.pillLabel)).toEqual([
+      '2. Verse 1',
+      '3. Refrain',
+      '4. Verse 2',
+      '5. Refrain',
+    ]);
+    expect(col2.map((p) => p.pillLabel)).toEqual([
+      '6. Chorus',
+      '7. Post-Chorus',
+      '8. Bridge',
+      '9. Chorus',
+      '10. Post-Chorus',
+    ]);
+
+    // Viewport fill ratio (1 - negative space) for 2 columns must be > 3x higher than 1 column
+    const fill1Col = computeViewportFillRatio(600, 1788, availW, availH, 0.308);
+    const fill2Col = computeViewportFillRatio(1220, 917, availW, availH, 0.601);
+    expect(fill2Col).toBeGreaterThan(fill1Col * 3);
+
+    // Expanding the repeat pills on Step 14 increases vertical height so 3 columns becomes optimal
+    const expandedEval = makeEvaluators(true);
+    const colsStep14Expanded = selectOptimalColumnCount({
+      items: step14Visible,
+      currentColumns: 2,
+      maxColumns: 4,
+      availW,
+      availH,
+      naturalW: 1220,
+      naturalH: 1197,
+      maxScale: 1.05,
+      ...expandedEval,
+    });
+    expect(colsStep14Expanded).toBe(3);
+  });
+
+  it('supports per-section layout overrides (zoom scale and column count) isolated by section key', () => {
+    const keySec9 = buildSectionLayoutKey('song-shallow', 'section', [
+      1, 2, 3, 4, 5, 6, 7, 8,
+    ]);
+    const keySec10 = buildSectionLayoutKey('song-shallow', 'section', [
+      1, 2, 3, 4, 5, 6, 7, 8, 9,
+    ]);
+    expect(keySec9).not.toBe(keySec10);
+
+    expect(clampCustomScale(0.05)).toBe(0.2);
+    expect(clampCustomScale(2.5)).toBe(1.5);
+    expect(clampCustomScale(0.624)).toBe(0.62);
+
+    let map = {};
+    map = updateSectionLayoutOverride(map, keySec10, {
+      scale: 0.62,
+      columns: 2,
+    });
+    expect(map[keySec10 as keyof typeof map]).toEqual({
+      scale: 0.62,
+      columns: 2,
+    });
+    expect(map[keySec9 as keyof typeof map]).toBeUndefined();
+
+    // Clearing override removes the key cleanly
+    map = updateSectionLayoutOverride(map, keySec10, null);
+    expect(map[keySec10 as keyof typeof map]).toBeUndefined();
   });
 });
 

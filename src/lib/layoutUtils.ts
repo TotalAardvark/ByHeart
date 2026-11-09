@@ -236,10 +236,27 @@ export function splitIntoBalancedColumns<T>(
 }
 
 /**
+ * Computes the fraction of the available viewport area (0..1) covered by a scaled
+ * layout bounding box, so `1 - fillRatio` represents the negative space fraction.
+ */
+export function computeViewportFillRatio(
+  estW: number,
+  estH: number,
+  availW: number,
+  availH: number,
+  scale: number
+): number {
+  const safeAvailArea = Math.max(1, availW * availH);
+  const renderedW = Math.min(availW, Math.max(0, estW * scale));
+  const renderedH = Math.min(availH, Math.max(0, estH * scale));
+  return (renderedW * renderedH) / safeAvailArea;
+}
+
+/**
  * Dynamically determines the optimal number of columns (1..maxColumns) in landscape mode.
  * Expands from 1 -> 2 -> 3 -> ... columns when vertical height overflows and there is
  * empty horizontal space on the sides that allows more columns to achieve a larger
- * auto-fit scale without introducing any line wrapping.
+ * auto-fit scale and minimize negative space without introducing any line wrapping.
  */
 export function selectOptimalColumnCount<T>(params: {
   items: T[];
@@ -301,7 +318,11 @@ export function selectOptimalColumnCount<T>(params: {
     };
   };
 
-  const currentMetrics = computeLayoutMetrics(currentColumns);
+  const safeCurrentCols = Math.min(
+    maxCandidateCols,
+    Math.max(1, Math.floor(currentColumns))
+  );
+  const currentMetrics = computeLayoutMetrics(safeCurrentCols);
   const pxPerWeight = naturalH / currentMetrics.maxColWeight;
   const pxPerChar = naturalW / currentMetrics.totalChars;
 
@@ -318,40 +339,159 @@ export function selectOptimalColumnCount<T>(params: {
   let bestScale = Math.min(maxScale, availW / estW1, availH / estH1);
   let bestMaxWeight = metrics1.maxColWeight;
   let bestEstH = estH1;
+  let bestFill = computeViewportFillRatio(
+    estW1,
+    estH1,
+    availW,
+    availH,
+    bestScale
+  );
 
   for (let c = 2; c <= maxCandidateCols; c++) {
     const m = computeLayoutMetrics(c);
     const estH = pxPerWeight * m.maxColWeight;
     const estW = pxPerChar * m.totalChars;
     const candidateScale = Math.min(maxScale, availW / estW, availH / estH);
+    const candidateFill = computeViewportFillRatio(
+      estW,
+      estH,
+      availW,
+      availH,
+      candidateScale
+    );
 
     if (c === 2) {
       // Transition 1 -> 2 columns whenever 1 column overflows vertically and 2 columns reduces height
-      if (m.maxColWeight < bestMaxWeight && candidateScale >= bestScale * 0.95) {
+      // without severely crushing horizontal scale (eliminating the tall vertical 1-column strip in landscape)
+      if (
+        m.maxColWeight < bestMaxWeight &&
+        (candidateScale >= bestScale * 0.88 || candidateFill > bestFill * 1.25)
+      ) {
         bestCols = 2;
         bestScale = candidateScale;
         bestMaxWeight = m.maxColWeight;
         bestEstH = estH;
+        bestFill = candidateFill;
       }
     } else {
-      // Transition (c - 1) -> c columns (e.g. 2 -> 3 or 3 -> 4) when:
+      // Transition to c columns (e.g. 2 -> 3 or 3 -> 4) when:
       // 1. The current best column count still overflows vertically at 100% scale (bestEstH > availH)
       // 2. Adding a column meaningfully reduces the tallest column height (at least ~8% shorter)
-      // 3. There is enough empty space on the sides that adding a column increases the auto-fit scale!
+      // 3. Adding a column increases the auto-fit scale OR maintains comparable scale while significantly reducing negative space
+      const improvesScale = candidateScale > bestScale * 1.02;
+      const reducesNegativeSpaceAtSimilarScale =
+        candidateScale >= bestScale * 0.96 && candidateFill > bestFill * 1.12;
+
       if (
         bestEstH > availH &&
         m.maxColWeight < bestMaxWeight * 0.92 &&
-        candidateScale > bestScale * 1.02
+        (improvesScale || reducesNegativeSpaceAtSimilarScale)
       ) {
         bestCols = c;
         bestScale = candidateScale;
         bestMaxWeight = m.maxColWeight;
         bestEstH = estH;
-      } else {
-        break;
+        bestFill = candidateFill;
       }
     }
   }
 
   return bestCols;
+}
+
+export interface SectionLayoutOverride {
+  scale?: number;
+  columns?: number;
+}
+
+export type SectionLayoutOverridesMap = Record<string, SectionLayoutOverride>;
+
+const LAYOUT_OVERRIDES_STORAGE_KEY = 'by_heart_section_layout_overrides_v1';
+
+/**
+ * Builds a deterministic key for saving layout tweaks (zoom scale and/or column count)
+ * per song, granularity, and active section window.
+ */
+export function buildSectionLayoutKey(
+  songId: string,
+  granularity: 'chunk' | 'section',
+  visiblePartIndices: number[]
+): string {
+  return `${songId}:${granularity}:${visiblePartIndices.join(',')}`;
+}
+
+/**
+ * Clamps a user-specified zoom scale between 20% (0.20) and 150% (1.50), rounded to 2 decimal places.
+ */
+export function clampCustomScale(scale: number): number {
+  if (!Number.isFinite(scale)) return 1;
+  return Number(Math.min(1.5, Math.max(0.2, scale)).toFixed(2));
+}
+
+/**
+ * Pure state updater for per-section layout overrides.
+ * Passing `null` or an empty override object deletes the key so the section returns to Auto-fit.
+ */
+export function updateSectionLayoutOverride(
+  currentMap: SectionLayoutOverridesMap,
+  key: string,
+  patch: Partial<SectionLayoutOverride> | null
+): SectionLayoutOverridesMap {
+  const next = { ...currentMap };
+  if (!patch) {
+    delete next[key];
+    return next;
+  }
+
+  const merged: SectionLayoutOverride = {
+    ...next[key],
+    ...patch,
+  };
+
+  if (merged.scale === undefined) {
+    delete merged.scale;
+  } else {
+    merged.scale = clampCustomScale(merged.scale);
+  }
+
+  if (merged.columns === undefined) {
+    delete merged.columns;
+  } else {
+    merged.columns = Math.min(4, Math.max(1, Math.round(merged.columns)));
+  }
+
+  if (merged.scale === undefined && merged.columns === undefined) {
+    delete next[key];
+  } else {
+    next[key] = merged;
+  }
+
+  return next;
+}
+
+export function loadSectionLayoutOverrides(): SectionLayoutOverridesMap {
+  try {
+    const raw = localStorage.getItem(LAYOUT_OVERRIDES_STORAGE_KEY);
+    if (!raw) return {};
+    const parsed = JSON.parse(raw);
+    if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) {
+      return parsed as SectionLayoutOverridesMap;
+    }
+    return {};
+  } catch {
+    return {};
+  }
+}
+
+export function saveSectionLayoutOverrides(
+  overrides: SectionLayoutOverridesMap
+): void {
+  try {
+    localStorage.setItem(
+      LAYOUT_OVERRIDES_STORAGE_KEY,
+      JSON.stringify(overrides)
+    );
+  } catch {
+    // ignore storage quota errors
+  }
 }

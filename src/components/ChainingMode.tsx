@@ -34,10 +34,16 @@ import {
   buildSlidingWindowSteps,
 } from '../lib/chaining';
 import {
+  SectionLayoutOverridesMap,
+  buildSectionLayoutKey,
+  clampCustomScale,
   estimateItemCharWidth,
   estimateItemVisualWeight,
+  loadSectionLayoutOverrides,
+  saveSectionLayoutOverrides,
   selectOptimalColumnCount,
   splitIntoBalancedColumns,
+  updateSectionLayoutOverride,
 } from '../lib/layoutUtils';
 import { selectPracticeTipForStep } from '../lib/practiceTips';
 import {
@@ -489,6 +495,67 @@ export const ChainingMode: React.FC<ChainingModeProps> = ({
   const [columnCount, setColumnCount] = useState(1);
   const [underneathTopPx, setUnderneathTopPx] = useState<number | null>(null);
   const evaluatedLayoutKeyRef = useRef<string>('');
+  const [layoutOverrides, setLayoutOverrides] =
+    useState<SectionLayoutOverridesMap>(() => loadSectionLayoutOverrides());
+  const [isEditingZoom, setIsEditingZoom] = useState(false);
+  const [zoomInputText, setZoomInputText] = useState('');
+
+  const sectionLayoutKey = useMemo(
+    () =>
+      buildSectionLayoutKey(
+        song.id,
+        granularity,
+        currentStep?.visiblePartIndices ?? []
+      ),
+    [song.id, granularity, currentStep?.visiblePartIndices]
+  );
+
+  const currentSectionOverride = layoutOverrides[sectionLayoutKey];
+  const manualColumns = currentSectionOverride?.columns;
+  const manualScale = currentSectionOverride?.scale;
+  const hasCustomLayoutOverride =
+    manualColumns !== undefined || manualScale !== undefined;
+
+  const applySectionLayoutPatch = useCallback(
+    (patch: { scale?: number; columns?: number } | null) => {
+      setLayoutOverrides((prev) => {
+        const next = updateSectionLayoutOverride(prev, sectionLayoutKey, patch);
+        saveSectionLayoutOverrides(next);
+        return next;
+      });
+    },
+    [sectionLayoutKey]
+  );
+
+  const handleAdjustZoom = useCallback(
+    (delta: number) => {
+      const nextScale = clampCustomScale(scale + delta);
+      applySectionLayoutPatch({ scale: nextScale });
+    },
+    [scale, applySectionLayoutPatch]
+  );
+
+  const handleCycleSectionColumns = useCallback(() => {
+    const maxCols = Math.min(4, Math.max(1, visibleParts.length));
+    if (maxCols <= 1) return;
+    const nextCols = (columnCount % maxCols) + 1;
+    // Clear any manual scale lock when changing column count so the new spread auto-fits cleanly
+    applySectionLayoutPatch({ columns: nextCols, scale: undefined });
+  }, [visibleParts.length, columnCount, applySectionLayoutPatch]);
+
+  const handleResetSectionLayout = useCallback(() => {
+    evaluatedLayoutKeyRef.current = '';
+    setIsEditingZoom(false);
+    applySectionLayoutPatch(null);
+  }, [applySectionLayoutPatch]);
+
+  const handleCommitZoomInput = useCallback(() => {
+    setIsEditingZoom(false);
+    const parsedPct = Number.parseFloat(zoomInputText);
+    if (!Number.isFinite(parsedPct) || parsedPct <= 0) return;
+    const nextScale = clampCustomScale(parsedPct / 100);
+    applySectionLayoutPatch({ scale: nextScale });
+  }, [zoomInputText, applySectionLayoutPatch]);
 
   const getPartWeight = useCallback(
     (part: ParsedPart) => {
@@ -523,19 +590,6 @@ export const ChainingMode: React.FC<ChainingModeProps> = ({
     [expandedRepeatParts]
   );
 
-  // Reset to 1-column candidate on step/content change before measuring in useLayoutEffect
-  useLayoutEffect(() => {
-    evaluatedLayoutKeyRef.current = '';
-    setColumnCount(1);
-  }, [
-    safeStepIndex,
-    granularity,
-    strategy,
-    customRange,
-    expandedRepeatParts,
-    song.body,
-  ]);
-
   const isCurrentStepBlankable = shouldBlankStep(currentStep?.type);
 
   const recomputeScale = useCallback(() => {
@@ -562,12 +616,23 @@ export const ChainingMode: React.FC<ChainingModeProps> = ({
     const naturalW = Math.max(1, contentEl.offsetWidth);
     const naturalH = Math.max(1, contentEl.offsetHeight);
 
-    if (!isLandscape) {
+    if (!isLandscape || visibleParts.length < 2) {
+      evaluatedLayoutKeyRef.current = '';
       if (columnCount !== 1) {
         setColumnCount(1);
         return;
       }
-    } else if (visibleParts.length >= 2) {
+    } else if (manualColumns !== undefined) {
+      const clampedManualCols = Math.min(
+        4,
+        Math.min(visibleParts.length, Math.max(1, manualColumns))
+      );
+      evaluatedLayoutKeyRef.current = '';
+      if (columnCount !== clampedManualCols) {
+        setColumnCount(clampedManualCols);
+        return;
+      }
+    } else {
       const layoutKey = `${Math.round(availW / 8)}x${Math.round(availH / 8)}:${safeStepIndex}:${granularity}:${strategy}:${customRange.join('-')}:${visibleParts.length}:${Object.keys(expandedRepeatParts).filter((k) => expandedRepeatParts[Number(k)]).join(',')}`;
       if (evaluatedLayoutKeyRef.current !== layoutKey) {
         const optimalCols = selectOptimalColumnCount({
@@ -594,7 +659,9 @@ export const ChainingMode: React.FC<ChainingModeProps> = ({
     const ratioH = availH / naturalH;
     const maxScale = columnCount > 1 ? 1.05 : 1.12;
     const rawScale = Math.min(maxScale, ratioW, ratioH);
-    const finalScale = Math.max(0.18, Number(rawScale.toFixed(3)));
+    const autoScale = Math.max(0.18, Number(rawScale.toFixed(3)));
+    const finalScale =
+      manualScale !== undefined ? clampCustomScale(manualScale) : autoScale;
     setScale(finalScale);
 
     // Compute exact Y position right underneath the scaled shape so the quote/tip sits gracefully below it
@@ -618,6 +685,8 @@ export const ChainingMode: React.FC<ChainingModeProps> = ({
     strategy,
     customRange,
     expandedRepeatParts,
+    manualColumns,
+    manualScale,
     getPartWeight,
     getPartCharWidth,
   ]);
@@ -1345,26 +1414,105 @@ export const ChainingMode: React.FC<ChainingModeProps> = ({
               );
             })}
 
-            {/* Subtle counter showing how far the growing pill bar has progressed */}
-            <span className="ml-auto text-[11px] font-mono text-stone-500 shrink-0">
-              Step {safeStepIndex + 1}/{steps.length}
+            {/* Subtle counter & interactive per-section Spread / Auto-fit zoom controls */}
+            <div className="ml-auto flex items-center gap-1.5 text-[11px] font-mono text-stone-500 shrink-0">
+              <span>
+                Step {safeStepIndex + 1}/{steps.length}
+              </span>
               {isBlankedStage && (
-                <span className="ml-1.5 text-amber-300/80">• Blanked</span>
+                <span className="text-amber-300/80">• Blanked</span>
               )}
-              {activeColumns.length > 1 && (
-                <span className="ml-2 text-stone-500">
-                  •{' '}
-                  {activeColumns.length === 2
-                    ? '2-Page Spread'
-                    : `${activeColumns.length}-Column Spread`}
-                </span>
+              {visibleParts.length >= 2 && (
+                <>
+                  <span>•</span>
+                  <button
+                    type="button"
+                    onClick={handleCycleSectionColumns}
+                    title="Click to cycle column spread (saved for this section)"
+                    className={`px-1.5 py-0.5 rounded border transition cursor-pointer ${
+                      manualColumns !== undefined
+                        ? 'bg-amber-400/15 border-amber-400/40 text-amber-300'
+                        : 'bg-stone-900/60 border-stone-800 text-stone-400 hover:text-stone-200 hover:border-stone-700'
+                    }`}
+                  >
+                    {activeColumns.length === 1
+                      ? '1-Column'
+                      : activeColumns.length === 2
+                      ? '2-Page Spread'
+                      : `${activeColumns.length}-Column Spread`}
+                  </button>
+                </>
               )}
-              {scale < 0.85 && (
-                <span className="ml-2 text-stone-600">
-                  • Auto-fit {Math.round(scale * 100)}%
-                </span>
-              )}
-            </span>
+              <span>•</span>
+              <div className="inline-flex items-center gap-0.5 bg-stone-900/60 border border-stone-800 rounded px-1 py-0.5">
+                <button
+                  type="button"
+                  onClick={() => handleAdjustZoom(-0.05)}
+                  title="Zoom out (-5%, saved for this section)"
+                  aria-label="Zoom out"
+                  className="px-1 text-stone-400 hover:text-stone-100 transition cursor-pointer font-bold"
+                >
+                  −
+                </button>
+                {isEditingZoom ? (
+                  <input
+                    type="number"
+                    min={20}
+                    max={150}
+                    step={1}
+                    autoFocus
+                    value={zoomInputText}
+                    onChange={(e) => setZoomInputText(e.target.value)}
+                    onBlur={handleCommitZoomInput}
+                    onKeyDown={(e) => {
+                      e.stopPropagation();
+                      if (e.key === 'Enter') {
+                        handleCommitZoomInput();
+                      } else if (e.key === 'Escape') {
+                        setIsEditingZoom(false);
+                      }
+                    }}
+                    className="w-11 bg-stone-950 border border-amber-400/60 rounded px-1 text-center text-[11px] text-amber-200 focus:outline-none"
+                  />
+                ) : (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setZoomInputText(String(Math.round(scale * 100)));
+                      setIsEditingZoom(true);
+                    }}
+                    title="Click to type a custom zoom % (saved for this section)"
+                    className={`px-1 rounded transition cursor-pointer ${
+                      manualScale !== undefined
+                        ? 'text-amber-300 font-semibold'
+                        : 'text-stone-400 hover:text-stone-200'
+                    }`}
+                  >
+                    {manualScale !== undefined ? 'Zoom' : 'Auto-fit'}{' '}
+                    {Math.round(scale * 100)}%
+                  </button>
+                )}
+                <button
+                  type="button"
+                  onClick={() => handleAdjustZoom(0.05)}
+                  title="Zoom in (+5%, saved for this section)"
+                  aria-label="Zoom in"
+                  className="px-1 text-stone-400 hover:text-stone-100 transition cursor-pointer font-bold"
+                >
+                  +
+                </button>
+                {hasCustomLayoutOverride && (
+                  <button
+                    type="button"
+                    onClick={handleResetSectionLayout}
+                    title="Reset this section to automatic column & zoom fit"
+                    className="ml-0.5 px-1 rounded bg-stone-800 hover:bg-stone-700 text-[10px] text-amber-300/90 transition cursor-pointer"
+                  >
+                    Auto
+                  </button>
+                )}
+              </div>
+            </div>
           </div>
         </div>
       </header>

@@ -122,6 +122,7 @@ Am           D/F#
 G              D     Em
   We're far from the shallow now`;
 
+/** Machine-compacted output of RAW_SHALLOW_UG_SAMPLE with Intro TAB; retained as regression test fixture for parser and compactor tests. */
 export const COMPACTED_SHALLOW_BODY = `Shallow - Lady Gaga & Bradley Cooper
 
 ((
@@ -209,6 +210,73 @@ Oh-ah, ha-ah-ah-ah
 9. Chorus
 
 10. Post-Chorus
+`;
+
+/** Curated starter song for new user library; features 9 clean sections with couplet chord loops without inline chord clutter. */
+export const DEFAULT_SHALLOW_BODY = `Shallow - Lady Gaga & Bradley Cooper
+
+((
+Standard tuning.
+Capo 2
+   Em7  D/F#  G     C    Cadd9  D     Am   Em   Bm   A
+e|(3)--(2)--(3)--(0)--(0)---2----0----0----2----0----|
+B|-3----3----3----1----3----3----1----0----3----2----|
+G|-0----2----0----0----0----2----2----0----4----2----|
+D|-2----0----0----2----2----0----2----2----4----2----|
+A|-2---(0)--(2)---3----3---------0----2----2----0----|
+E|-0----2----3------------------------0--------------|
+))
+
+1. Verse 1
+[ Em7 - D/F# - G | C - G - D ]
+  Tell me something, girl
+  Are you happy in this modern world?
+  Or do you need more?
+  Is there something else you're searchin' for?
+
+2. Refrain
+[ Em7 - D/F# - G | C - G - D ]
+  I'm fallin'
+  In all the good times I find myself longin' for change
+  And in the bad times I fear myself
+
+3. Verse 2
+[ Em7 - D/F# - G | C - G - D ]
+  Tell me something, boy
+  Aren't you tired tryin' to fill that void?
+  Or do you need more?
+  Ain't it hard keepin' it so hardcore?
+
+4. Refrain
+[ Em7 - D/F# - G | C - G - D ]
+  I'm fallin'
+  In all the good times I find myself longin' for change
+  And in the bad times I fear myself
+
+5. Chorus
+[ Am - D/F# | G - D - Em ]
+I'm off the deep end, watch as I dive in
+I'll never meet the ground
+Crash through the surface, where they can't hurt us
+We're far from the shallow now
+
+6. Post-Chorus
+[ Am - D/F# | G - D - Em ]
+  In the sha-ha, shallow
+  In the sha-ha-sha-la-la-la-low
+  In the sha-ha, shallow
+  We're far from the shallow now
+
+7. Bridge
+[ Bm - D | A - Em ]
+Oh, ha-ah-ah, ah
+Oh-ah, ha-ah-ah-ah
+Oh, ha-ah-ah, ah
+Oh-ah, ha-ah-ah-ah
+
+8. Chorus
+
+9. Post-Chorus
 `;
 
 export const RAW_ROTTERDAM_UG_SAMPLE = `[Verse 1]
@@ -330,11 +398,11 @@ export const SAMPLE_SONGS: SongItem[] = [
   {
     id: 'song-shallow',
     shortName: 'Shallow (capo 2)',
-    body: COMPACTED_SHALLOW_BODY,
+    body: DEFAULT_SHALLOW_BODY,
     rawSource: RAW_SHALLOW_UG_SAMPLE,
     lastMode: 'chain',
     chunkSize: 4,
-    customHighlights: ['1:0:2', '1:2:4', '5:0:3', '5:2:0'],
+    customHighlights: ['0:0:2', '0:2:4', '4:0:3', '4:2:0'],
     scaffoldEveryNLines: 2,
     updatedAt: 1730950000000,
   },
@@ -390,31 +458,35 @@ Ooh, ooh, ooh
     updatedAt: 1730940000000,
   },
   {
-    id: 'text-ozymandias',
-    shortName: 'Ozymandias',
-    body: `Ozymandias - Percy Bysshe Shelley (Complete Sonnet)
+    id: 'text-sonnet-18',
+    shortName: 'Shakespeare - Sonnet 18',
+    body: `Sonnet 18 - William Shakespeare
 
-1. Octave
-I met a traveller from an antique land,
-Who said—"Two vast and trunkless legs of stone
-Stand in the desert. . . . Near them, on the sand,
-Half sunk a shattered visage lies, whose frown,
-And wrinkled lip, and sneer of cold command,
-Tell that its sculptor well those passions read
-Which yet survive, stamped on these lifeless things,
-The hand that mocked them, and the heart that fed;
+1. Quatrain 1
+Shall I compare thee to a summer's day?
+Thou art more lovely and more temperate:
+Rough winds do shake the darling buds of May,
+And summer's lease hath all too short a date;
 
-2. Sestet
-And on the pedestal, these words appear:
-My name is Ozymandias, King of Kings;
-Look on my Works, ye Mighty, and despair!
-Nothing beside remains. Round the decay
-Of that colossal Wreck, boundless and bare
-The lone and level sands stretch far away."
+2. Quatrain 2
+Sometime too hot the eye of heaven shines,
+And often is his gold complexion dimm'd;
+And every fair from fair sometime declines,
+By chance or nature's changing course untrimm'd;
+
+3. Quatrain 3
+But thy eternal summer shall not fade,
+Nor lose possession of that fair thou ow'st;
+Nor shall death brag thou wander'st in his shade,
+When in eternal lines to time thou grow'st:
+
+4. Couplet
+So long as men can breathe or eyes can see,
+So long lives this, and this gives life to thee.
 `,
-    lastMode: 'scaffold',
-    chunkSize: 4,
-    customHighlights: ['0:1:4', '0:3:4', '1:1:3', '1:3:0'],
+    lastMode: 'chain',
+    chunkSize: 2,
+    customHighlights: ['0:0:3', '1:0:4', '2:0:2', '3:0:5'],
     scaffoldEveryNLines: 2,
     updatedAt: 1730930000000,
   },

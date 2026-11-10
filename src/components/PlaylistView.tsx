@@ -5,6 +5,7 @@ import {
   Link2,
   AlignLeft,
   Layers,
+  FileText,
   ChevronDown,
   Plus,
   Download,
@@ -76,6 +77,14 @@ export const MODE_META: Record<
     shortLabel: 'Cards',
     description: 'Section entry triggers, chord loops & transition prompts',
     icon: Layers,
+    badgeClass:
+      'bg-stone-800/80 hover:bg-stone-800 text-stone-200 hover:text-stone-100 border-stone-700/70',
+  },
+  page: {
+    label: 'Page View',
+    shortLabel: 'Sheet',
+    description: 'Full scrolling song sheet with line numbers & print format',
+    icon: FileText,
     badgeClass:
       'bg-stone-800/80 hover:bg-stone-800 text-stone-200 hover:text-stone-100 border-stone-700/70',
   },
@@ -755,6 +764,7 @@ export const PlaylistView: React.FC<PlaylistViewProps> = ({
                               onClick={() => {
                                 onChangeMode(song.id, m);
                                 setOpenDropdownId(null);
+                                onPlaySong({ ...song, lastMode: m });
                               }}
                               className={`w-full px-3 py-2.5 text-left flex items-start gap-2.5 hover:bg-stone-800/80 transition cursor-pointer ${
                                 isSelected ? 'bg-stone-800/50' : ''

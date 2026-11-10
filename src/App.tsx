@@ -20,6 +20,7 @@ import { SongEditorModal } from './components/SongEditorModal';
 import { ChainingMode } from './components/ChainingMode';
 import { ScaffoldMode } from './components/ScaffoldMode';
 import { FlashcardMode } from './components/FlashcardMode';
+import { SongPageView } from './components/SongPageView';
 import { CloudProfileModal } from './components/CloudProfileModal';
 import { LandingPage } from './components/LandingPage';
 
@@ -312,6 +313,7 @@ export const App: React.FC = () => {
             onEditSong={() =>
               setEditingSong({ song: activeSong, isNew: false })
             }
+            onChangeMode={(mode) => handleChangeMode(activeSong.id, mode)}
             onChangeChunkSize={(newSize) =>
               handleChangeChunkSize(activeSong.id, newSize)
             }
@@ -324,11 +326,38 @@ export const App: React.FC = () => {
               handleUpdateScaffold(activeSong.id, highlights, everyN)
             }
             onExit={() => setActiveSongId(null)}
+            onChangeMode={(mode) => handleChangeMode(activeSong.id, mode)}
           />
-        ) : (
+        ) : activeSong.lastMode === 'flashcards' ? (
           <FlashcardMode
             song={activeSong}
             onExit={() => setActiveSongId(null)}
+            onChangeMode={(mode) => handleChangeMode(activeSong.id, mode)}
+          />
+        ) : activeSong.lastMode === 'page' ? (
+          <SongPageView
+            song={activeSong}
+            onExit={() => setActiveSongId(null)}
+            onEditSong={() =>
+              setEditingSong({ song: activeSong, isNew: false })
+            }
+            onChangeMode={(mode) => handleChangeMode(activeSong.id, mode)}
+            onChangeChunkSize={(newSize) =>
+              handleChangeChunkSize(activeSong.id, newSize)
+            }
+          />
+        ) : (
+          <ChainingMode
+            song={activeSong}
+            onExit={() => setActiveSongId(null)}
+            onEditSong={() =>
+              setEditingSong({ song: activeSong, isNew: false })
+            }
+            onChangeMode={(mode) => handleChangeMode(activeSong.id, mode)}
+            onChangeChunkSize={(newSize) =>
+              handleChangeChunkSize(activeSong.id, newSize)
+            }
+            onSaveSong={handleSaveEditor}
           />
         )
       ) : (

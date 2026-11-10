@@ -334,3 +334,35 @@
   background-color: color-mix(in srgb, var(--color-amber-400) 18%, transparent);
 }
 
+/* Print Sheet Styling */
+@media print {
+  @page {
+    margin: 1.5cm;
+    size: auto;
+  }
+
+  body {
+    background: #ffffff !important;
+    color: #000000 !important;
+    font-size: 11pt !important;
+    line-height: 1.4 !important;
+    -webkit-print-color-adjust: exact !important;
+    print-color-adjust: exact !important;
+  }
+
+  header,
+  nav,
+  button,
+  [data-print-hide='true'] {
+    display: none !important;
+  }
+
+  .parsed-line-pair,
+  .section-block,
+  .print-break-inside-avoid {
+    break-inside: avoid !important;
+    page-break-inside: avoid !important;
+  }
+}
+
+

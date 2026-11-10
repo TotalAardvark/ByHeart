@@ -9,15 +9,22 @@ import React, {
 import {
   ArrowLeft,
   Highlighter,
-  Eye,
   EyeOff,
   Trash2,
   RefreshCw,
   Play,
   Square,
+  Printer,
+  ChevronDown,
+  Link2,
+  AlignLeft,
+  Layers,
+  FileText,
 } from 'lucide-react';
-import { ParsedSection, SongItem } from '../types';
+import { ParsedSection, PracticeMode, SongItem } from '../types';
 import { parseSongBody } from '../lib/parser';
+import { usePopoverPosition } from '../lib/usePopoverPosition';
+import { PrintPreviewModal } from './PrintPreviewModal';
 import {
   estimateItemCharWidth,
   estimateItemVisualWeight,
@@ -39,14 +46,22 @@ interface ScaffoldModeProps {
     scaffoldEveryNLines: 0 | 2 | 4
   ) => void;
   onExit: () => void;
+  onChangeMode?: (mode: PracticeMode) => void;
 }
 
 export const ScaffoldMode: React.FC<ScaffoldModeProps> = ({
   song,
   onUpdateScaffold,
   onExit,
+  onChangeMode,
 }) => {
   const [viewMode, setViewMode] = useState<'practice' | 'edit'>('practice');
+  const [isModeDropdownOpen, setIsModeDropdownOpen] = useState(false);
+  const [isPrintPreviewOpen, setIsPrintPreviewOpen] = useState(false);
+  const modeButtonRef = useRef<HTMLButtonElement>(null);
+  const modePopoverStyle = usePopoverPosition(isModeDropdownOpen, modeButtonRef, {
+    popoverWidth: 208,
+  });
   const [everyNLines, setEveryNLines] = useState<0 | 2 | 4>(
     song.scaffoldEveryNLines ?? 2
   );
@@ -88,6 +103,26 @@ export const ScaffoldMode: React.FC<ScaffoldModeProps> = ({
     };
     window.addEventListener('pointerup', handlePointerUpGlobal);
     return () => window.removeEventListener('pointerup', handlePointerUpGlobal);
+  }, []);
+
+  useEffect(() => {
+    const handlePointerDown = (e: MouseEvent) => {
+      const target = e.target as HTMLElement;
+      if (!target.closest('[data-scaffold-mode-dropdown]')) {
+        setIsModeDropdownOpen(false);
+      }
+    };
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') {
+        setIsModeDropdownOpen(false);
+      }
+    };
+    window.addEventListener('mousedown', handlePointerDown);
+    window.addEventListener('keydown', handleKeyDown);
+    return () => {
+      window.removeEventListener('mousedown', handlePointerDown);
+      window.removeEventListener('keydown', handleKeyDown);
+    };
   }, []);
 
   const handleWordPointerDown = (
@@ -581,6 +616,93 @@ export const ScaffoldMode: React.FC<ScaffoldModeProps> = ({
               )}
             </button>
 
+            {/* Switch Mode Dropdown */}
+            {onChangeMode && (
+              <div className="relative" data-scaffold-mode-dropdown>
+                <button
+                  ref={modeButtonRef}
+                  type="button"
+                  onClick={() => setIsModeDropdownOpen((prev) => !prev)}
+                  className="px-2.5 py-1.5 rounded-lg border border-stone-700 bg-stone-800/80 hover:bg-stone-800 text-stone-200 text-xs font-medium flex items-center gap-1.5 transition cursor-pointer"
+                  title="Switch Practice Mode"
+                >
+                  <AlignLeft className="w-3.5 h-3.5 text-emerald-400" />
+                  <span className="hidden sm:inline">Scaffold</span>
+                  <ChevronDown className="w-3 h-3 text-stone-400" />
+                </button>
+
+                {isModeDropdownOpen && (
+                  <div
+                    style={modePopoverStyle}
+                    className="fixed w-52 rounded-xl bg-stone-900 border border-stone-700 shadow-2xl py-1.5 z-50"
+                  >
+                    <div className="px-3 py-1 text-[11px] font-mono uppercase tracking-wider text-stone-400 border-b border-stone-800">
+                      Switch Mode
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setIsModeDropdownOpen(false);
+                        onChangeMode('chain');
+                      }}
+                      className="w-full px-3 py-2 text-left flex items-center gap-2 hover:bg-stone-800 text-stone-200 text-xs font-medium cursor-pointer"
+                    >
+                      <Link2 className="w-4 h-4 text-stone-400" />
+                      <span>Chain & Loop</span>
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setIsModeDropdownOpen(false);
+                        onChangeMode('scaffold');
+                      }}
+                      className="w-full px-3 py-2 text-left flex items-center gap-2 bg-stone-800/80 text-emerald-300 text-xs font-medium cursor-pointer"
+                    >
+                      <AlignLeft className="w-4 h-4 text-emerald-400" />
+                      <span>Word Scaffold (Active)</span>
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setIsModeDropdownOpen(false);
+                        onChangeMode('flashcards');
+                      }}
+                      className="w-full px-3 py-2 text-left flex items-center gap-2 hover:bg-stone-800 text-stone-200 text-xs font-medium cursor-pointer"
+                    >
+                      <Layers className="w-4 h-4 text-stone-400" />
+                      <span>Flashcards</span>
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setIsModeDropdownOpen(false);
+                        onChangeMode('page');
+                      }}
+                      className="w-full px-3 py-2 text-left flex items-center gap-2 hover:bg-stone-800 text-stone-200 text-xs font-medium cursor-pointer"
+                    >
+                      <FileText className="w-4 h-4 text-amber-400" />
+                      <span>Page View / Sheet</span>
+                    </button>
+
+                    {/* Print Action inside Settings */}
+                    <div className="mt-1.5 pt-1.5 border-t border-stone-800 px-1.5">
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setIsModeDropdownOpen(false);
+                          setIsPrintPreviewOpen(true);
+                        }}
+                        className="w-full p-2 rounded-lg border border-stone-800 hover:border-stone-700 bg-stone-950/60 hover:bg-stone-800 text-stone-300 hover:text-stone-100 text-xs font-medium flex items-center justify-center gap-2 transition cursor-pointer"
+                      >
+                        <Printer className="w-3.5 h-3.5 text-amber-300" />
+                        <span>Print Song Sheet</span>
+                      </button>
+                    </div>
+                  </div>
+                )}
+              </div>
+            )}
+
             {highlights.size > 0 && (
               <button
                 onClick={handleClearCustomHighlights}
@@ -651,6 +773,14 @@ export const ScaffoldMode: React.FC<ScaffoldModeProps> = ({
           </span>
         </div>
       </div>
+
+      {/* Print Preview Modal */}
+      <PrintPreviewModal
+        song={song}
+        isOpen={isPrintPreviewOpen}
+        onClose={() => setIsPrintPreviewOpen(false)}
+        initialColumns={columnCount}
+      />
     </div>
   );
 };

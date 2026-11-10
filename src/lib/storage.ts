@@ -8,6 +8,7 @@ const BUILTIN_SAMPLE_IDS = new Set([
   'song-shallow',
   'song-knockin',
   'text-ozymandias',
+  'text-sonnet-18',
 ]);
 
 export function loadSongs(): SongItem[] {

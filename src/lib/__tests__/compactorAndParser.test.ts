@@ -13,8 +13,10 @@ import { buildGuidedChainSteps } from '../chaining';
 import {
   COMPACTED_ROTTERDAM_BODY,
   COMPACTED_SHALLOW_BODY,
+  DEFAULT_SHALLOW_BODY,
   RAW_ROTTERDAM_UG_SAMPLE,
   RAW_SHALLOW_UG_SAMPLE,
+  SAMPLE_SONGS,
 } from '../sampleSongs';
 import { THEME_PALETTES, getThemePalette } from '../themes';
 import {
@@ -863,5 +865,50 @@ describe('Chord URL HTML Scraper', () => {
     expect(compacted.split('\n')[0]).toBe(
       'Rotterdam (Or Anywhere) - The Beautiful South'
     );
+  });
+
+  describe('Default Starter Playlist Repertoire', () => {
+    it('initializes SAMPLE_SONGS with curated Sonnet 18, clean Shallow, and valid in-bound highlights', () => {
+      expect(SAMPLE_SONGS).toHaveLength(3);
+
+      // 1. Shakespeare Sonnet 18
+      const sonnet = SAMPLE_SONGS.find((s) => s.id === 'text-sonnet-18');
+      expect(sonnet).toBeDefined();
+      expect(sonnet?.shortName).toBe('Shakespeare - Sonnet 18');
+      expect(sonnet?.chunkSize).toBe(2);
+      expect(sonnet?.lastMode).toBe('chain');
+
+      const parsedSonnet = parseSongBody(sonnet!.body, 2);
+      expect(parsedSonnet.sections).toHaveLength(4);
+      expect(parsedSonnet.sections.map((s) => s.fullHeader)).toEqual([
+        '1. Quatrain 1',
+        '2. Quatrain 2',
+        '3. Quatrain 3',
+        '4. Couplet',
+      ]);
+
+      // 2. Curated Shallow
+      const shallow = SAMPLE_SONGS.find((s) => s.id === 'song-shallow');
+      expect(shallow?.body).toBe(DEFAULT_SHALLOW_BODY);
+      expect(shallow?.body).toContain('((\nStandard tuning.\nCapo 2');
+      const parsedShallow = parseSongBody(shallow!.body, 4);
+      expect(parsedShallow.sections).toHaveLength(9);
+      expect(parsedShallow.preambleLines[0]).toBe('Shallow - Lady Gaga & Bradley Cooper');
+
+      // 3. Verify all customHighlights in all sample songs reference valid existing words
+      for (const song of SAMPLE_SONGS) {
+        const parsed = parseSongBody(song.body, song.chunkSize);
+        for (const highlight of song.customHighlights ?? []) {
+          const [secIdx, lineIdx, wordIdx] = highlight.split(':').map(Number);
+          const part = parsed.sectionParts[secIdx];
+          expect(part).toBeDefined();
+          const line = part.lines[lineIdx];
+          expect(line).toBeDefined();
+          const word = line.words[wordIdx];
+          expect(word).toBeDefined();
+          expect(word.text.length).toBeGreaterThan(0);
+        }
+      }
+    });
   });
 });

@@ -1,5 +1,5 @@
 import React from 'react';
-import { EyeOff, Eye, X, Check } from 'lucide-react';
+import { X, Check } from 'lucide-react';
 
 export type BlankingTarget = 'both' | 'lyrics-only' | 'chords-only';
 export type BlankingStepFilter = 'every-step' | 'isolated-only';
@@ -80,30 +80,21 @@ export const BlankingPopover: React.FC<BlankingPopoverProps> = ({
     >
       {/* Header */}
       <div className="flex items-center justify-between pb-2.5 mb-2.5 border-b border-stone-800">
-        <div className="flex items-center gap-2 min-w-0">
-          <div className="p-1.5 rounded-lg bg-amber-400/15 border border-amber-400/30 text-amber-300 shrink-0">
-            {enabled ? (
-              <EyeOff className="w-3.5 h-3.5" />
-            ) : (
-              <Eye className="w-3.5 h-3.5" />
-            )}
+        <div className="min-w-0">
+          <div className="text-xs font-bold text-stone-100 flex items-center gap-1.5">
+            <span>Blanking Recall Stage</span>
+            <span
+              className={`text-[10px] font-mono px-1.5 py-0.2 rounded border ${
+                enabled
+                  ? 'bg-amber-500/20 text-amber-300 border-amber-500/30'
+                  : 'bg-stone-800 text-stone-400 border-stone-700'
+              }`}
+            >
+              {enabled ? 'ON' : 'OFF'}
+            </span>
           </div>
-          <div className="min-w-0">
-            <div className="text-xs font-bold text-stone-100 flex items-center gap-1.5">
-              <span>Blanking Recall Stage</span>
-              <span
-                className={`text-[10px] font-mono px-1.5 py-0.2 rounded border ${
-                  enabled
-                    ? 'bg-amber-500/20 text-amber-300 border-amber-500/30'
-                    : 'bg-stone-800 text-stone-400 border-stone-700'
-                }`}
-              >
-                {enabled ? 'ON' : 'OFF'}
-              </span>
-            </div>
-            <div className="text-[10px] text-stone-400 truncate">
-              Immediate recall before advancing
-            </div>
+          <div className="text-[10px] text-stone-400 truncate">
+            Immediate recall before advancing
           </div>
         </div>
         <button

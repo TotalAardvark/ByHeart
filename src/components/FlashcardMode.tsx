@@ -1,4 +1,4 @@
-import React, { useState, useMemo, useEffect, useCallback } from 'react';
+import React, { useState, useMemo, useEffect, useCallback, useRef } from 'react';
 import {
   ArrowLeft,
   RotateCcw,
@@ -7,13 +7,21 @@ import {
   CheckCircle2,
   Shuffle,
   Layers,
+  Link2,
+  AlignLeft,
+  FileText,
+  ChevronDown,
+  Printer,
 } from 'lucide-react';
-import { ParsedLyricLine, SongItem } from '../types';
+import { ParsedLyricLine, PracticeMode, SongItem } from '../types';
 import { parseSongBody } from '../lib/parser';
+import { usePopoverPosition } from '../lib/usePopoverPosition';
+import { PrintPreviewModal } from './PrintPreviewModal';
 
 interface FlashcardModeProps {
   song: SongItem;
   onExit: () => void;
+  onChangeMode?: (mode: PracticeMode) => void;
 }
 
 interface SongFlashcard {
@@ -100,17 +108,37 @@ function buildFlashcardsForSong(song: SongItem): SongFlashcard[] {
 export const FlashcardMode: React.FC<FlashcardModeProps> = ({
   song,
   onExit,
+  onChangeMode,
 }) => {
   const initialDeck = useMemo(() => buildFlashcardsForSong(song), [song]);
   const [queue, setQueue] = useState<SongFlashcard[]>(initialDeck);
   const [masteredCount, setMasteredCount] = useState(0);
   const [isFlipped, setIsFlipped] = useState(false);
+  const [isModeDropdownOpen, setIsModeDropdownOpen] = useState(false);
+  const [isPrintPreviewOpen, setIsPrintPreviewOpen] = useState(false);
+  const modeButtonRef = useRef<HTMLButtonElement>(null);
+  const modePopoverStyle = usePopoverPosition(isModeDropdownOpen, modeButtonRef, {
+    popoverWidth: 208,
+  });
 
   useEffect(() => {
     setQueue(initialDeck);
     setMasteredCount(0);
     setIsFlipped(false);
   }, [initialDeck]);
+
+  useEffect(() => {
+    const handlePointerDown = (e: MouseEvent) => {
+      const target = e.target as HTMLElement;
+      if (!target.closest('[data-flashcard-mode-dropdown]')) {
+        setIsModeDropdownOpen(false);
+      }
+    };
+    window.addEventListener('mousedown', handlePointerDown);
+    return () => {
+      window.removeEventListener('mousedown', handlePointerDown);
+    };
+  }, []);
 
   const currentCard = queue[0] || null;
 
@@ -158,12 +186,16 @@ export const FlashcardMode: React.FC<FlashcardModeProps> = ({
       } else if (e.key === 'ArrowLeft' || e.key === '1') {
         if (isFlipped) handleGrade(false);
       } else if (e.key === 'Escape') {
+        if (isModeDropdownOpen) {
+          setIsModeDropdownOpen(false);
+          return;
+        }
         onExit();
       }
     };
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [currentCard, isFlipped, handleGrade, onExit]);
+  }, [currentCard, isFlipped, isModeDropdownOpen, handleGrade, onExit]);
 
   return (
     <div className="min-h-screen bg-stone-950 text-stone-100 flex flex-col select-none">
@@ -206,6 +238,93 @@ export const FlashcardMode: React.FC<FlashcardModeProps> = ({
             >
               <RotateCcw className="w-3.5 h-3.5" />
             </button>
+
+            {/* Switch Mode Dropdown */}
+            {onChangeMode && (
+              <div className="relative" data-flashcard-mode-dropdown>
+                <button
+                  ref={modeButtonRef}
+                  type="button"
+                  onClick={() => setIsModeDropdownOpen((prev) => !prev)}
+                  className="px-2.5 py-1.5 rounded-lg border border-stone-700 bg-stone-800/80 hover:bg-stone-800 text-stone-200 text-xs font-medium flex items-center gap-1.5 transition cursor-pointer"
+                  title="Switch Practice Mode"
+                >
+                  <Layers className="w-3.5 h-3.5 text-sky-400" />
+                  <span className="hidden sm:inline">Cards</span>
+                  <ChevronDown className="w-3 h-3 text-stone-400" />
+                </button>
+
+                {isModeDropdownOpen && (
+                  <div
+                    style={modePopoverStyle}
+                    className="fixed w-52 rounded-xl bg-stone-900 border border-stone-700 shadow-2xl py-1.5 z-50"
+                  >
+                    <div className="px-3 py-1 text-[11px] font-mono uppercase tracking-wider text-stone-400 border-b border-stone-800">
+                      Switch Mode
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setIsModeDropdownOpen(false);
+                        onChangeMode('chain');
+                      }}
+                      className="w-full px-3 py-2 text-left flex items-center gap-2 hover:bg-stone-800 text-stone-200 text-xs font-medium cursor-pointer"
+                    >
+                      <Link2 className="w-4 h-4 text-stone-400" />
+                      <span>Chain & Loop</span>
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setIsModeDropdownOpen(false);
+                        onChangeMode('scaffold');
+                      }}
+                      className="w-full px-3 py-2 text-left flex items-center gap-2 hover:bg-stone-800 text-stone-200 text-xs font-medium cursor-pointer"
+                    >
+                      <AlignLeft className="w-4 h-4 text-stone-400" />
+                      <span>Word Scaffold</span>
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setIsModeDropdownOpen(false);
+                        onChangeMode('flashcards');
+                      }}
+                      className="w-full px-3 py-2 text-left flex items-center gap-2 bg-stone-800/80 text-sky-300 text-xs font-medium cursor-pointer"
+                    >
+                      <Layers className="w-4 h-4 text-sky-400" />
+                      <span>Flashcards (Active)</span>
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setIsModeDropdownOpen(false);
+                        onChangeMode('page');
+                      }}
+                      className="w-full px-3 py-2 text-left flex items-center gap-2 hover:bg-stone-800 text-stone-200 text-xs font-medium cursor-pointer"
+                    >
+                      <FileText className="w-4 h-4 text-amber-400" />
+                      <span>Page View / Sheet</span>
+                    </button>
+
+                    {/* Print Action inside Settings */}
+                    <div className="mt-1.5 pt-1.5 border-t border-stone-800 px-1.5">
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setIsModeDropdownOpen(false);
+                          setIsPrintPreviewOpen(true);
+                        }}
+                        className="w-full p-2 rounded-lg border border-stone-800 hover:border-stone-700 bg-stone-950/60 hover:bg-stone-800 text-stone-300 hover:text-stone-100 text-xs font-medium flex items-center justify-center gap-2 transition cursor-pointer"
+                      >
+                        <Printer className="w-3.5 h-3.5 text-amber-300" />
+                        <span>Print Song Sheet</span>
+                      </button>
+                    </div>
+                  </div>
+                )}
+              </div>
+            )}
           </div>
         </div>
       </header>
@@ -396,6 +515,13 @@ export const FlashcardMode: React.FC<FlashcardModeProps> = ({
           </div>
         )}
       </main>
+
+      {/* Print Preview Modal */}
+      <PrintPreviewModal
+        song={song}
+        isOpen={isPrintPreviewOpen}
+        onClose={() => setIsPrintPreviewOpen(false)}
+      />
     </div>
   );
 };

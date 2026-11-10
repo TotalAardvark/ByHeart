@@ -1,4 +1,4 @@
-export type PracticeMode = 'chain' | 'scaffold' | 'flashcards';
+export type PracticeMode = 'chain' | 'scaffold' | 'flashcards' | 'page';
 
 export type ChainingGranularity = 'chunk' | 'section';
 

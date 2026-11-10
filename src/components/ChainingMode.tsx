@@ -14,14 +14,18 @@ import {
   SlidersHorizontal,
   Eye,
   EyeOff,
-  ChevronDown,
   X,
   Check,
   Pencil,
   Play,
   Square,
+  Printer,
+  AlignLeft,
+  Layers,
+  FileText,
+  Sparkles,
 } from 'lucide-react';
-import { ChainingGranularity, ParsedPart, SongItem } from '../types';
+import { ChainingGranularity, ParsedPart, PracticeMode, SongItem } from '../types';
 import { parseSongBody } from '../lib/parser';
 import {
   getActivePlayingId,
@@ -51,12 +55,16 @@ import {
   BlankingPopover,
   DEFAULT_BLANKING_CONFIG,
 } from './BlankingPopover';
+import { ChunkSizePopover } from './ChunkSizePopover';
 import { RefineChunkModal } from './RefineChunkModal';
+import { PrintPreviewModal } from './PrintPreviewModal';
+import { usePopoverPosition } from '../lib/usePopoverPosition';
 
 interface ChainingModeProps {
   song: SongItem;
   onExit: () => void;
   onEditSong: () => void;
+  onChangeMode?: (mode: PracticeMode) => void;
   onChangeChunkSize?: (newSize: number) => void;
   onSaveSong?: (updated: SongItem) => void;
 }
@@ -67,6 +75,7 @@ export const ChainingMode: React.FC<ChainingModeProps> = ({
   song,
   onExit,
   onEditSong,
+  onChangeMode,
   onChangeChunkSize,
   onSaveSong,
 }) => {
@@ -74,6 +83,7 @@ export const ChainingMode: React.FC<ChainingModeProps> = ({
     useState<ChainingGranularity>('chunk');
   const [strategy, setStrategy] = useState<SequenceStrategy>('guided');
   const [stepIndex, setStepIndex] = useState(0);
+  const [isPracticeChunkPopoverOpen, setIsPracticeChunkPopoverOpen] = useState(false);
   const [refiningPart, setRefiningPart] = useState<ParsedPart | null>(null);
   const [blankingConfig, setBlankingConfig] = useState<BlankingConfig>(() => {
     try {
@@ -105,6 +115,23 @@ export const ChainingMode: React.FC<ChainingModeProps> = ({
   const [granularityToast, setGranularityToast] = useState<string | null>(null);
   const toastTimerRef = useRef<number | null>(null);
 
+  const [isPrintPreviewOpen, setIsPrintPreviewOpen] = useState(false);
+  const [showWindowMenu, setShowWindowMenu] = useState(false);
+
+  const blankingButtonRef = useRef<HTMLButtonElement>(null);
+  const chunkButtonRef = useRef<HTMLButtonElement>(null);
+  const settingsButtonRef = useRef<HTMLButtonElement>(null);
+
+  const blankingStyle = usePopoverPosition(isBlankingPopoverOpen, blankingButtonRef, {
+    popoverWidth: 320,
+  });
+  const chunkStyle = usePopoverPosition(isPracticeChunkPopoverOpen, chunkButtonRef, {
+    popoverWidth: 320,
+  });
+  const settingsStyle = usePopoverPosition(showWindowMenu, settingsButtonRef, {
+    popoverWidth: 320,
+  });
+
   useEffect(() => {
     const updateOrientation = () => {
       setIsPortrait(
@@ -119,11 +146,32 @@ export const ChainingMode: React.FC<ChainingModeProps> = ({
     };
   }, []);
 
+  // Close popovers on click outside or Escape
   useEffect(() => {
-    return () => {
-      if (toastTimerRef.current) {
-        window.clearTimeout(toastTimerRef.current);
+    const handlePointerDown = (e: MouseEvent) => {
+      const target = e.target as HTMLElement;
+      if (
+        !target.closest('[data-chain-strategy-popover]') &&
+        !target.closest('[data-practice-chunk-popover]') &&
+        !target.closest('[data-chain-blanking-popover]')
+      ) {
+        setIsPracticeChunkPopoverOpen(false);
+        setShowWindowMenu(false);
+        setIsBlankingPopoverOpen(false);
       }
+    };
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') {
+        setIsPracticeChunkPopoverOpen(false);
+        setShowWindowMenu(false);
+        setIsBlankingPopoverOpen(false);
+      }
+    };
+    window.addEventListener('mousedown', handlePointerDown);
+    window.addEventListener('keydown', handleKeyDown);
+    return () => {
+      window.removeEventListener('mousedown', handlePointerDown);
+      window.removeEventListener('keydown', handleKeyDown);
     };
   }, []);
 
@@ -202,7 +250,6 @@ export const ChainingMode: React.FC<ChainingModeProps> = ({
 
   // Custom range selection (if user clicks pills directly to set a custom [start, end] window)
   const [customRange, setCustomRange] = useState<[number, number]>([0, 0]);
-  const [showWindowMenu, setShowWindowMenu] = useState(false);
 
   // Track expanded repeat badges if the user taps a collapsed "5. Chorus ↻" badge to peek
   const [expandedRepeatParts, setExpandedRepeatParts] = useState<
@@ -1118,26 +1165,38 @@ export const ChainingMode: React.FC<ChainingModeProps> = ({
                 <span className="font-bold text-lg sm:text-xl tracking-tight text-stone-100 truncate">
                   {song.shortName}
                 </span>
+                {/* Step label / indicator */}
                 <span className="text-xs font-mono text-amber-300/90 shrink-0 hidden xs:inline">
                   {currentStep?.label}
                 </span>
                 {isBlankedStage && (
-                  <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[11px] font-mono font-semibold bg-amber-400/20 border border-amber-400/40 text-amber-300 shrink-0">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setShowWindowMenu(false);
+                      setIsPracticeChunkPopoverOpen(false);
+                      setIsBlankingPopoverOpen((prev) => !prev);
+                    }}
+                    title="Blanking Active — Click to configure"
+                    className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[11px] font-mono font-semibold bg-amber-400/20 border border-amber-400/40 text-amber-300 shrink-0 hover:bg-amber-400/30 transition cursor-pointer"
+                  >
                     <EyeOff className="w-3 h-3" />
                     <span className="hidden sm:inline">Blanked</span>
-                  </span>
+                  </button>
                 )}
               </div>
             </div>
 
             {/* Granularity & Window Controls */}
             <div className="flex items-center gap-1.5 shrink-0">
-              {/* Blanking Mode Popover Trigger (Icon-only in Portrait to maximize Title space) */}
+              {/* Blanking Mode Popover Trigger */}
               <div className="relative" data-chain-blanking-popover>
                 <button
                   type="button"
+                  ref={blankingButtonRef}
                   onClick={() => {
                     setShowWindowMenu(false);
+                    setIsPracticeChunkPopoverOpen(false);
                     setIsBlankingPopoverOpen((prev) => !prev);
                   }}
                   title={
@@ -1146,61 +1205,72 @@ export const ChainingMode: React.FC<ChainingModeProps> = ({
                       : 'Blanking disabled — Click to enable or configure blanking'
                   }
                   aria-label="Configure Blanking"
-                  className={`px-2.5 py-1.5 rounded-lg border text-xs font-mono flex items-center gap-1.5 transition cursor-pointer ${
+                  className={`p-1.5 rounded-lg border transition cursor-pointer flex items-center justify-center ${
                     blankingConfig.enabled
-                      ? 'bg-amber-400/15 border-amber-400/50 text-amber-300 font-semibold shadow-sm shadow-amber-500/10'
-                      : 'bg-stone-800/70 border-stone-700/70 text-stone-400 hover:text-stone-200 hover:bg-stone-800'
+                      ? 'bg-stone-800 text-amber-300 font-semibold border-amber-400/40 shadow-sm'
+                      : 'bg-stone-950 text-stone-500 border-stone-800 hover:text-stone-300 hover:bg-stone-900'
                   }`}
                 >
-                  {blankingConfig.enabled ? (
-                    <EyeOff className="w-3.5 h-3.5 text-amber-300" />
-                  ) : (
-                    <Eye className="w-3.5 h-3.5 text-stone-400" />
-                  )}
-                  {!isPortrait && (
-                    <>
-                      <span>Blanking</span>
-                      <span
-                        className={`w-1.5 h-1.5 rounded-full transition ${
-                          blankingConfig.enabled
-                            ? 'bg-amber-400'
-                            : 'bg-stone-600'
-                        }`}
-                      />
-                      <ChevronDown className="w-3 h-3 opacity-70" />
-                    </>
-                  )}
+                  <EyeOff
+                    className={`w-3.5 h-3.5 ${
+                      blankingConfig.enabled ? 'text-amber-300' : 'text-stone-500'
+                    }`}
+                  />
                 </button>
 
                 {isBlankingPopoverOpen && (
-                  <div className="absolute right-0 top-full mt-2 z-50">
+                  <div
+                    className="fixed z-50 animate-in fade-in zoom-in-95 duration-150"
+                    style={blankingStyle}
+                  >
                     <BlankingPopover
                       config={blankingConfig}
                       onChange={handleUpdateBlankingConfig}
                       onClose={() => setIsBlankingPopoverOpen(false)}
-                      align="right"
                     />
                   </div>
                 )}
               </div>
 
-              {/* Clean Unit Toggle: Chunks vs Sections (with 3-time onboarding toast) */}
-              <div className="relative">
+              {/* Clean Unit Toggle: Chunks vs Sections (Clicking Chunks when active opens ChunkSizePopover) */}
+              <div className="relative" data-practice-chunk-popover>
                 <div className="inline-flex rounded-lg bg-stone-950 p-0.5 border border-stone-800 text-[11px] font-mono">
                   <button
                     type="button"
-                    onClick={() => handleSelectGranularity('chunk')}
-                    className={`px-2.5 py-1 rounded-md transition cursor-pointer ${
+                    ref={chunkButtonRef}
+                    onClick={() => {
+                      if (granularity === 'chunk') {
+                        setIsBlankingPopoverOpen(false);
+                        setShowWindowMenu(false);
+                        setIsPracticeChunkPopoverOpen((prev) => !prev);
+                      } else {
+                        handleSelectGranularity('chunk');
+                      }
+                    }}
+                    title={
+                      granularity === 'chunk'
+                        ? `Chunk Mode (${song.chunkSize}L) — Click to change chunk size`
+                        : 'Switch to Chunks mode'
+                    }
+                    className={`px-2.5 py-1 rounded-md transition cursor-pointer flex items-center gap-1 ${
                       granularity === 'chunk'
                         ? 'bg-stone-800 text-amber-300 font-semibold'
                         : 'text-stone-400 hover:text-stone-200'
                     }`}
                   >
-                    Chunks
+                    <span>Chunks</span>
+                    {granularity === 'chunk' && (
+                      <span className="text-[10px] px-1 py-0.2 rounded bg-amber-400/10 border border-amber-400/20 text-amber-300/90 font-mono">
+                        {song.chunkSize}L
+                      </span>
+                    )}
                   </button>
                   <button
                     type="button"
-                    onClick={() => handleSelectGranularity('section')}
+                    onClick={() => {
+                      setIsPracticeChunkPopoverOpen(false);
+                      handleSelectGranularity('section');
+                    }}
                     className={`px-2.5 py-1 rounded-md transition cursor-pointer ${
                       granularity === 'section'
                         ? 'bg-stone-800 text-amber-300 font-semibold'
@@ -1211,6 +1281,24 @@ export const ChainingMode: React.FC<ChainingModeProps> = ({
                   </button>
                 </div>
 
+                {isPracticeChunkPopoverOpen && onChangeChunkSize && (
+                  <div
+                    className="fixed z-50 animate-in fade-in zoom-in-95 duration-150"
+                    style={chunkStyle}
+                  >
+                    <ChunkSizePopover
+                      songTitle={song.shortName}
+                      songBody={song.body}
+                      chunkSize={song.chunkSize}
+                      onChange={(newSize) => {
+                        onChangeChunkSize(newSize);
+                        setStepIndex(0);
+                      }}
+                      onClose={() => setIsPracticeChunkPopoverOpen(false)}
+                    />
+                  </div>
+                )}
+
                 {granularityToast && (
                   <div className="absolute right-0 top-full mt-2 z-50 pointer-events-none whitespace-nowrap px-3 py-1.5 rounded-lg bg-stone-900 border border-amber-400/50 text-amber-300 text-xs font-mono font-semibold shadow-xl animate-in fade-in zoom-in-95 duration-150">
                     {granularityToast}
@@ -1218,38 +1306,33 @@ export const ChainingMode: React.FC<ChainingModeProps> = ({
                 )}
               </div>
 
-              {/* Sliding Window / Strategy Selector */}
+              {/* Sliding Window / Strategy Selector & Settings */}
               <div className="relative" data-chain-strategy-popover>
                 <button
                   type="button"
+                  ref={settingsButtonRef}
                   onClick={() => {
                     setIsBlankingPopoverOpen(false);
+                    setIsPracticeChunkPopoverOpen(false);
                     setShowWindowMenu((prev) => !prev);
                   }}
-                  className={`px-2.5 py-1.5 rounded-lg border text-xs font-mono flex items-center gap-1.5 transition cursor-pointer ${
+                  className={`p-1.5 rounded-lg border text-xs font-mono flex items-center justify-center transition cursor-pointer ${
                     strategy !== 'guided'
                       ? 'bg-amber-400/15 border-amber-400/40 text-amber-300'
                       : 'bg-stone-800/70 border-stone-700/70 text-stone-300 hover:bg-stone-800'
                   }`}
-                  title="Configure Chaining Strategy"
+                  title="Practice settings & learning modalities"
+                  aria-label="Practice settings"
                 >
                   <SlidersHorizontal className="w-3.5 h-3.5" />
-                  <span className="hidden sm:inline">
-                    {strategy === 'guided'
-                      ? 'Cumulative Chain'
-                      : strategy === 'window-2'
-                      ? '2-Part Window'
-                      : strategy === 'window-3'
-                      ? '3-Part Window'
-                      : 'Custom Window'}
-                  </span>
                 </button>
 
                 {showWindowMenu && (
                   <div
                     onClick={(e) => e.stopPropagation()}
                     onMouseDown={(e) => e.stopPropagation()}
-                    className="absolute right-0 top-full mt-2 w-72 sm:w-80 max-w-[calc(100vw-2rem)] rounded-xl bg-stone-900 border border-stone-700 shadow-2xl p-3.5 sm:p-4 text-stone-100 z-50 animate-in fade-in zoom-in-95 duration-150 origin-top-right"
+                    style={settingsStyle}
+                    className="fixed z-50 w-72 sm:w-84 rounded-xl bg-stone-900 border border-stone-700 shadow-2xl p-3.5 sm:p-4 text-stone-100 animate-in fade-in zoom-in-95 duration-150"
                   >
                     {/* Header */}
                     <div className="flex items-center justify-between pb-2.5 mb-2.5 border-b border-stone-800">
@@ -1344,6 +1427,78 @@ export const ChainingMode: React.FC<ChainingModeProps> = ({
                       })}
                     </div>
 
+                    {/* Switch Mode Section */}
+                    {onChangeMode && (
+                      <div className="mt-3 pt-2.5 border-t border-stone-800">
+                        <div className="flex items-center justify-between mb-2">
+                          <span className="text-[11px] font-bold uppercase tracking-wider text-amber-300 flex items-center gap-1.5">
+                            <Sparkles className="w-3 h-3 text-amber-400" />
+                            Learning Modalities
+                          </span>
+                          <span className="text-[9px] font-mono px-1.5 py-0.5 rounded bg-stone-800 text-stone-400 border border-stone-700/50">
+                            Switch Mode
+                          </span>
+                        </div>
+
+                        <div className="grid grid-cols-3 gap-1.5">
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setShowWindowMenu(false);
+                              onChangeMode('scaffold');
+                            }}
+                            className="p-2 rounded-xl border border-stone-800 bg-stone-950/80 hover:bg-stone-800/90 hover:border-emerald-500/50 text-stone-300 hover:text-stone-100 text-[11px] font-medium flex flex-col items-center gap-1.5 transition cursor-pointer group shadow-sm"
+                          >
+                            <div className="p-1 rounded-lg bg-emerald-500/10 border border-emerald-500/20 text-emerald-400 group-hover:scale-105 transition-transform">
+                              <AlignLeft className="w-4 h-4" />
+                            </div>
+                            <span className="font-semibold text-stone-200">Scaffold</span>
+                          </button>
+
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setShowWindowMenu(false);
+                              onChangeMode('flashcards');
+                            }}
+                            className="p-2 rounded-xl border border-stone-800 bg-stone-950/80 hover:bg-stone-800/90 hover:border-sky-500/50 text-stone-300 hover:text-stone-100 text-[11px] font-medium flex flex-col items-center gap-1.5 transition cursor-pointer group shadow-sm"
+                          >
+                            <div className="p-1 rounded-lg bg-sky-500/10 border border-sky-500/20 text-sky-400 group-hover:scale-105 transition-transform">
+                              <Layers className="w-4 h-4" />
+                            </div>
+                            <span className="font-semibold text-stone-200">Cards</span>
+                          </button>
+
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setShowWindowMenu(false);
+                              onChangeMode('page');
+                            }}
+                            className="p-2 rounded-xl border border-stone-800 bg-stone-950/80 hover:bg-stone-800/90 hover:border-amber-500/50 text-stone-300 hover:text-stone-100 text-[11px] font-medium flex flex-col items-center gap-1.5 transition cursor-pointer group shadow-sm"
+                          >
+                            <div className="p-1 rounded-lg bg-amber-500/10 border border-amber-500/20 text-amber-400 group-hover:scale-105 transition-transform">
+                              <FileText className="w-4 h-4" />
+                            </div>
+                            <span className="font-semibold text-stone-200">Sheet</span>
+                          </button>
+                        </div>
+                      </div>
+                    )}
+
+                    {/* Print Action inside Settings */}
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setShowWindowMenu(false);
+                        setIsPrintPreviewOpen(true);
+                      }}
+                      className="w-full mt-2.5 p-2 rounded-lg border border-stone-800 hover:border-stone-700 bg-stone-950/60 hover:bg-stone-800 text-stone-300 hover:text-stone-100 text-xs font-medium flex items-center justify-center gap-2 transition cursor-pointer"
+                    >
+                      <Printer className="w-3.5 h-3.5 text-amber-300" />
+                      <span>Print Song Sheet</span>
+                    </button>
+
                     {/* Footer Tip */}
                     <div className="mt-3 pt-2.5 border-t border-stone-800 flex items-center justify-between gap-2">
                       <span className="text-[10px] text-stone-400 leading-snug">
@@ -1428,7 +1583,18 @@ export const ChainingMode: React.FC<ChainingModeProps> = ({
                 Step {safeStepIndex + 1}/{steps.length}
               </span>
               {isBlankedStage && (
-                <span className="text-amber-300/80">• Blanked</span>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setShowWindowMenu(false);
+                    setIsPracticeChunkPopoverOpen(false);
+                    setIsBlankingPopoverOpen((prev) => !prev);
+                  }}
+                  title="Blanking Active — Click to configure"
+                  className="text-amber-300/90 hover:text-amber-200 underline decoration-amber-400/40 underline-offset-2 transition cursor-pointer font-semibold"
+                >
+                  • Blanked
+                </button>
               )}
               {visibleParts.length >= 2 && (
                 <>
@@ -1496,7 +1662,6 @@ export const ChainingMode: React.FC<ChainingModeProps> = ({
                         : 'text-stone-400 hover:text-stone-200'
                     }`}
                   >
-                    {manualScale !== undefined ? 'Zoom' : 'Auto-fit'}{' '}
                     {Math.round(scale * 100)}%
                   </button>
                 )}
@@ -1514,9 +1679,10 @@ export const ChainingMode: React.FC<ChainingModeProps> = ({
                     type="button"
                     onClick={handleResetSectionLayout}
                     title="Reset this section to automatic column & zoom fit"
-                    className="ml-0.5 px-1 rounded bg-stone-800 hover:bg-stone-700 text-[10px] text-amber-300/90 transition cursor-pointer"
+                    aria-label="Reset to auto zoom"
+                    className="ml-0.5 p-1 rounded bg-stone-800 hover:bg-stone-700 text-amber-300/90 hover:text-amber-200 transition cursor-pointer flex items-center justify-center"
                   >
-                    Auto
+                    <RotateCcw className="w-2.5 h-2.5" />
                   </button>
                 )}
               </div>
@@ -1638,12 +1804,15 @@ export const ChainingMode: React.FC<ChainingModeProps> = ({
               <div className="flex flex-wrap items-center justify-center gap-2.5">
                 <button
                   onClick={() => {
+                    setStrategy('custom-range');
+                    setCustomRange([0, Math.max(0, parts.length - 1)]);
+                    setStepIndex(0);
                     setIsBlankedStage(false);
                     setIsCompletedModal(false);
                   }}
                   className="px-4 py-2 rounded-lg text-xs font-medium bg-stone-800 hover:bg-stone-700 text-stone-200 transition cursor-pointer"
                 >
-                  Keep Reviewing Full Sheet
+                  Keep Reviewing Full Song
                 </button>
                 <button
                   onClick={() => {
@@ -1686,6 +1855,14 @@ export const ChainingMode: React.FC<ChainingModeProps> = ({
           onClose={() => setRefiningPart(null)}
         />
       )}
+
+      {/* Print Preview Modal */}
+      <PrintPreviewModal
+        song={song}
+        isOpen={isPrintPreviewOpen}
+        onClose={() => setIsPrintPreviewOpen(false)}
+        initialColumns={activeColumns.length}
+      />
     </div>
   );
 };
